@@ -1,0 +1,12 @@
+{
+  "name": "video-obfuscator",
+  "version": "1.0.0",
+  "description": "FFmpeg microservice for video obfuscation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
