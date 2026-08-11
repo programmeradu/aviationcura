@@ -1,0 +1,16 @@
+name: Trigger Aviation Workflow (Cron)
+
+on:
+  schedule:
+    # Runs every 3 hours
+    - cron: "0 */3 * * *"
+  workflow_dispatch: # Allows you to manually trigger it from the Actions tab
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit the Trigger Endpoint
+        run: |
+          # Note: If your workers.dev subdomain is different, update this URL!
+          curl -X POST https://aviation-curator.programmeradu.workers.dev/api/trigger
