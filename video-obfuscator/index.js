@@ -35,7 +35,7 @@ app.post('/obfuscate', (req, res) => {
         const ffmpeg = spawn('ffmpeg', [
             '-y',
             '-i', tmpInput,
-            '-vf', 'hflip,eq=saturation=1.1,crop=iw-10:ih-10,setpts=0.95*PTS',
+            '-vf', 'eq=saturation=1.1:contrast=1.05,crop=iw-10:ih-10,setpts=0.95*PTS',
             '-af', 'atempo=1.05',
             '-c:v', 'libx264',
             '-preset', 'fast',
