@@ -283,5 +283,10 @@ export default {
 		}
 
 		return new Response('Aviation Curator API', { status: 200 });
+	},
+	async scheduled(event: any, env: Env, ctx: ExecutionContext) {
+		console.log("Cron triggered! Starting workflow...");
+		const instance = await env.MY_WORKFLOW.create();
+		console.log("Workflow started with ID:", instance.id);
 	}
 };

@@ -13,6 +13,11 @@
 	"observability": {
 		"enabled": true
 	},
+	"triggers": {
+		"crons": [
+			"0 */3 * * *"
+		]
+	},
 	"upload_source_maps": true,
 	"ai": {
 		"binding": "AI"
@@ -21,10 +26,7 @@
 		{
 			"name": "aviation-curator-workflow",
 			"binding": "MY_WORKFLOW",
-			"class_name": "AviationCuratorWorkflow",
-			"schedules": [
-				"0 */3 * * *"
-			]
+			"class_name": "AviationCuratorWorkflow"
 		}
 	],
 	"r2_buckets": [
