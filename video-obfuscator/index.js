@@ -38,8 +38,10 @@ app.post('/obfuscate', (req, res) => {
             '-vf', 'hflip,eq=saturation=1.1,crop=iw-10:ih-10,setpts=0.95*PTS',
             '-af', 'atempo=1.05',
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
+            '-preset', 'fast',
+            '-crf', '18',
             '-c:a', 'aac',
+            '-b:a', '192k',
             tmpOutput
         ]);
 
