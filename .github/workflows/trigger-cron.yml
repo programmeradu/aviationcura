@@ -13,4 +13,4 @@ jobs:
       - name: Hit the Trigger Endpoint
         run: |
           # Note: If your workers.dev subdomain is different, update this URL!
-          curl -X POST https://aviation-curator.programmeradu.workers.dev/api/trigger
+          curl -X POST https://aviation-curator.samueladu1970.workers.dev/api/trigger
