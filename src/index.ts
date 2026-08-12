@@ -139,7 +139,7 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 		const r2Key = await step.do('download-and-store', async () => {
 			if (!this.env.RAPIDAPI_KEY) throw new Error("Missing RAPIDAPI_KEY");
 			
-			const initialUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=720&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+			const initialUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
 			const initRes = await fetch(initialUrl, {
 				headers: {
 					'x-rapidapi-key': this.env.RAPIDAPI_KEY,
