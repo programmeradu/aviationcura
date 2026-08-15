@@ -39,6 +39,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<string | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
 
   const handleCopyCaption = () => {
     navigator.clipboard.writeText(captionText);
@@ -46,12 +47,39 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleManualDispatch = (platform: 'telegram' | 'tiktok') => {
-    setDispatchStatus(`Dispatching to ${platform === 'telegram' ? 'Telegram' : 'TikTok (Private Draft)'}...`);
-    setTimeout(() => {
-      setDispatchStatus(`Pushed to ${platform === 'telegram' ? 'Telegram' : 'TikTok Private Draft'} successfully.`);
+  const handleManualDispatch = async (platform: 'telegram' | 'tiktok') => {
+    if (!currentVideo) {
+      setDispatchStatus('Error: No video selected');
       setTimeout(() => setDispatchStatus(null), 3000);
-    }, 1000);
+      return;
+    }
+
+    setIsPosting(true);
+    setDispatchStatus(`Posting to ${platform === 'telegram' ? 'Telegram' : 'TikTok (@aloyacy)'}...`);
+
+    try {
+      const endpoint = platform === 'tiktok' ? '/api/publish-tiktok' : '/api/publish-telegram';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: currentVideo.id,
+          caption: captionText || currentVideo.title
+        })
+      });
+
+      const data = await res.json() as any;
+      if (res.ok && (data.success || data.post || data.id)) {
+        setDispatchStatus(`Successfully published to ${platform === 'tiktok' ? 'TikTok (@aloyacy)' : 'Telegram'}!`);
+      } else {
+        setDispatchStatus(`Failed: ${data.error || 'Check server logs'}`);
+      }
+    } catch (err: any) {
+      setDispatchStatus(`Error: ${err.message}`);
+    } finally {
+      setIsPosting(false);
+      setTimeout(() => setDispatchStatus(null), 5000);
+    }
   };
 
   const charCount = captionText.length;
@@ -215,16 +243,18 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
             onClick={() => handleManualDispatch('tiktok')}
-            className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98"
+            disabled={isPosting}
+            className="flat-button-primary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98 disabled:opacity-50"
           >
-            TikTok (Draft)
+            {isPosting ? 'Posting...' : 'Post to TikTok'}
           </button>
 
           <button
             onClick={() => handleManualDispatch('telegram')}
-            className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98"
+            disabled={isPosting}
+            className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98 disabled:opacity-50"
           >
-            Telegram
+            Post to Telegram
           </button>
 
           {currentVideo && (

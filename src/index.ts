@@ -491,13 +491,12 @@ export default {
 
 				const zernioPayload = {
 					content: caption,
-					mediaUrls: [directVideoUrl],
-					publishNow: true,
+					mediaItems: [{ type: "video", url: directVideoUrl }],
 					platforms: [{
 						platform: "tiktok",
-						accountId: tiktokAcc._id || tiktokAcc.id,
-						profileId: tiktokAcc.profileId
-					}]
+						accountId: tiktokAcc._id || tiktokAcc.id
+					}],
+					publishNow: true
 				};
 
 				const postRes = await fetch("https://zernio.com/api/v1/posts", {
@@ -510,6 +509,39 @@ export default {
 				});
 				const postData = await postRes.json();
 				return new Response(JSON.stringify({ success: true, data: postData }), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ success: false, error: err.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
+		if (url.pathname === '/api/publish-telegram' && request.method === 'POST') {
+			try {
+				const body = await request.json() as any;
+				const videoId = body.videoId;
+				const caption = body.caption || "Curated Video";
+				if (!videoId) return new Response(JSON.stringify({ error: "Missing videoId" }), { status: 400 });
+
+				const videoObject = await env.VIDEOS_BUCKET.get(`${videoId}.mp4`);
+				if (!videoObject) return new Response(JSON.stringify({ error: "Video not found in R2" }), { status: 404 });
+
+				const videoArrayBuffer = await videoObject.arrayBuffer();
+				const videoBlob = new Blob([videoArrayBuffer], { type: 'video/mp4' });
+
+				const formData = new FormData();
+				formData.append('chat_id', env.TELEGRAM_CHAT_ID);
+				formData.append('caption', caption);
+				formData.append('video', videoBlob, `${videoId}.mp4`);
+
+				const tgUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendVideo`;
+				const tgRes = await fetch(tgUrl, {
+					method: 'POST',
+					body: formData
+				});
+				const tgData = await tgRes.json();
+				return new Response(JSON.stringify({ success: tgRes.ok, data: tgData }), {
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
 				});
 			} catch (err: any) {
