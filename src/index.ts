@@ -73,20 +73,28 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		// Step 3: Fetch statistics & filter hidden gems
 		const selectedVideo = await step.do('filter-gems', async () => {
 			const ids = unseenVideos.map((v: any) => v.videoId).join(',');
-			const url = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${ids}&key=${this.env.YOUTUBE_API_KEY}`;
+			const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${ids}&key=${this.env.YOUTUBE_API_KEY}`;
 			const res = await fetch(url);
 			if (!res.ok) throw new Error(`YouTube Stats failed: ${res.statusText}`);
 			const data = await res.json() as any;
 			
-			const statsMap = new Map();
+			const itemsMap = new Map();
 			for (const item of data.items) {
-				statsMap.set(item.id, item.statistics);
+				itemsMap.set(item.id, item);
 			}
 
 			const gems = [];
 			for (const video of unseenVideos) {
-				const stats = statsMap.get(video.videoId);
-				if (!stats) continue;
+				const item = itemsMap.get(video.videoId);
+				if (!item) continue;
+				const stats = item.statistics;
+				const snippet = item.snippet;
+
+				// Attach clean full title, description, and tags
+				video.title = snippet.title || video.title;
+				video.description = snippet.description || '';
+				video.tags = snippet.tags || [];
+
 				const views = parseInt(stats.viewCount) || 0;
 				const likes = parseInt(stats.likeCount) || 0;
 				const engagementRate = views > 0 ? (likes / views) : 0;
@@ -105,25 +113,23 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 
 		// Step 4: Generate Caption with Workers AI
 		const caption = await step.do('generate-caption', async () => {
-			const prompt = `Video Title: "${selectedVideo.title}"\nVideo Description: "${selectedVideo.description || ''}"\nCategory/Niche: "${activeNiche.replace('_', ' ')}"\nKeyword Search: "${keyword}"\n\nWrite a compelling viral caption based STRICTLY on the actual content of this video. Follow the Hook/Value/CTA structure. Do NOT invent unrelated topics or confuse this video with other niches.`;
+			const cleanTitle = selectedVideo.title.replace(/[#@][\w-]+/g, '').trim();
+			const prompt = `Video Title: "${cleanTitle}"\nTags: "${(selectedVideo.tags || []).slice(0, 6).join(', ')}"\nCategory: "${activeNiche.replace('_', ' ')}"\n\nWrite a 2-line viral TikTok caption based SOLELY on the exact subject of this video title. Do NOT invent unrelated plots, objects, or actions.`;
 			
-			const systemMessage = `You are a top-tier viral social media curator running an account focused on the '${activeNiche.replace('_', ' ')}' niche. You share discoveries made by OTHER creators with your audience — you are NEVER the creator or filmer.
+			const systemMessage = `You are a social media curator. You write short, intriguing captions for videos you discover.
+CRITICAL ACCURACY INSTRUCTIONS:
+- Your caption MUST be 100% truthful to the exact Video Title provided.
+- If the title is about "Amazon finds", write about Amazon finds/gadgets.
+- If the title is about "Cyprus beaches", write about Cyprus beaches and travel.
+- If the title is about "Soap carving", write about satisfying soap ASMR.
+- NEVER invent fictitious pilot landings, flying cars, or unrelated inventions unless the title explicitly states it.
+- Never claim ownership (do not say "we created" or "our product").
 
-CRITICAL RULES:
-- The caption MUST be 100% relevant to the provided Video Title and Topic. Do NOT write about airplanes or aviation unless the video title is explicitly about aviation.
-- Never use "we/our" as if you made the product or filmed the clip. Use curator phrasing: "found this," "watch this," "someone captured," "this is insane"
-- Never claim ownership.
-
-Structure:
-1. HOOK: A punchy, intriguing 1-sentence hook directly about what happens in the video.
-2. VALUE: A specific detail or callout from the video title.
-3. CTA: A short question to spark comments in the TikTok algorithm.
-
-Length & Format:
-- Under 200 characters total.
-- 2-3 short lines with line breaks.
-- Max 3 relevant hashtags matching the video's actual topic.
-- 1-2 emojis max.`;
+Format:
+- Line 1: Hook about the video title
+- Line 2: Engaging question / CTA
+- 2-3 relevant hashtags at the end
+- Under 180 characters total.`;
 
 			const response = await this.env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
 				messages: [
