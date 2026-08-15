@@ -74,7 +74,7 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		// Step 3: Fetch statistics & filter hidden gems
 		const selectedVideo = await step.do('filter-gems', async () => {
 			const ids = unseenVideos.map((v: any) => v.videoId).join(',');
-			const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${ids}&key=${this.env.YOUTUBE_API_KEY}`;
+			const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${ids}&key=${this.env.YOUTUBE_API_KEY}`;
 			const res = await fetch(url);
 			if (!res.ok) throw new Error(`YouTube Stats failed: ${res.statusText}`);
 			const data = await res.json() as any;
@@ -84,12 +84,26 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 				itemsMap.set(item.id, item);
 			}
 
+			// Helper to parse ISO 8601 duration like PT58S or PT1M12S to seconds
+			const parseDuration = (iso: string): number => {
+				const match = iso.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
+				if (!match) return 60;
+				const minutes = parseInt(match[1] || '0');
+				const seconds = parseInt(match[2] || '0');
+				return minutes * 60 + seconds;
+			};
+
 			const gems = [];
 			for (const video of unseenVideos) {
 				const item = itemsMap.get(video.videoId);
 				if (!item) continue;
 				const stats = item.statistics;
 				const snippet = item.snippet;
+				const contentDetails = item.contentDetails;
+
+				const durationSec = contentDetails?.duration ? parseDuration(contentDetails.duration) : 60;
+				// Prefer videos between 10s and 90s (optimal TikTok Short length)
+				if (durationSec > 90) continue;
 
 				// Attach clean full title, description, and tags
 				video.title = snippet.title || video.title;
