@@ -158,7 +158,30 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 				}
 				
 				const rapidApiData = await rapidApiRes.json();
-				const videoUrl = rapidApiData.url;
+				let videoUrl = rapidApiData.url;
+				
+				if (!videoUrl && rapidApiData.progressId) {
+					console.log(`RapidAPI returned progressId: ${rapidApiData.progressId}. Polling for completion...`);
+					let isFinished = false;
+					while (!isFinished) {
+						await new Promise(r => setTimeout(r, 3000));
+						const progressRes = await fetch(`https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/progress?id=${rapidApiData.progressId}`, {
+							headers: {
+								'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
+								'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+							}
+						});
+						if (!progressRes.ok) throw new Error("Failed to check progress");
+						const progressData = await progressRes.json();
+						
+						if (progressData.finished) {
+							videoUrl = progressData.downloadUrl || progressData.url;
+							isFinished = true;
+						} else {
+							console.log(`Progress: ${progressData.progress || 0}`);
+						}
+					}
+				}
 				
 				if (!videoUrl) {
 					throw new Error("RapidAPI response missing url: " + JSON.stringify(rapidApiData));
