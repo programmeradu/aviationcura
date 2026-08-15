@@ -128,8 +128,21 @@ app.post('/process_url', (req, res) => {
 
     console.log(`[${timestamp}] /process_url: downloading via curl then probing...`);
 
-    // Step 1: Download to disk so we can probe it
-    const curl = spawn('curl', ['-sL', '-A', 'Mozilla/5.0', '-o', tmpInput, downloadUrl]);
+    // Clean up any stale files in /tmp older than 10 minutes
+    try {
+        const files = fs.readdirSync('/tmp');
+        const now = Date.now();
+        for (const file of files) {
+            const fp = path.join('/tmp', file);
+            const stat = fs.statSync(fp);
+            if (now - stat.mtimeMs > 600000) {
+                fs.unlinkSync(fp);
+            }
+        }
+    } catch(e) {}
+
+    // Step 1: Download to disk via curl with timeout
+    const curl = spawn('curl', ['-sL', '--max-time', '120', '-A', 'Mozilla/5.0', '-o', tmpInput, downloadUrl]);
     curl.stderr.on('data', d => console.log(`[${timestamp} curl]: ${d.toString().trim()}`));
 
     curl.on('close', async (curlCode) => {

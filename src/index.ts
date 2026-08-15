@@ -220,20 +220,16 @@ Keep total caption under 150 characters.`;
 					throw new Error(`Failed to acquire video stream URL across all quality tiers (1440p, 1080p, 720p) for video ${selectedVideo.videoId}`);
 				}
 
-				console.log("Fetching direct video stream...");
-				const mp4Res = await fetch(videoUrl);
-				if (!mp4Res.ok) throw new Error("Failed to download MP4 from RapidAPI url");
-
-				console.log("Streaming direct MP4 to Obfuscator Container for FFmpeg processing...");
+				console.log("Sending download URL to Obfuscator Container for direct download & FFmpeg processing...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Post the stream directly to the container
-				const obsRes = await containerInstance.fetch("http://container/download_and_obfuscate", {
+				// Delegate downloading and processing directly to the container to avoid double-proxy timeouts
+				const obsRes = await containerInstance.fetch("http://container/process_url", {
 					method: 'POST',
-					body: mp4Res.body,
 					headers: {
-						'Content-Type': 'application/octet-stream'
-					}
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ downloadUrl: videoUrl })
 				});
 				
 				if (!obsRes.ok) {
@@ -242,9 +238,8 @@ Keep total caption under 150 characters.`;
 					throw new Error(`Container processing failed: ${obsRes.status} ${obsRes.statusText} - ${errText}`);
 				}
 				
-				// Use the streaming body directly so we don't blow up the Worker's memory!
 				finalStream = obsRes.body;
-				console.log("Video successfully obfuscated natively on Cloudflare!");
+				console.log("Video successfully obfuscated natively on Cloudflare Container!");
 			} else {
 				throw new Error("OBFUSCATOR container is not configured! Cannot process video.");
 			}
