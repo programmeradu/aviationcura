@@ -14,6 +14,7 @@ export interface Env {
 	OBFUSCATOR: any;
 	REPLICATE_API_TOKEN?: string;
 	AYRSHARE_API_KEY?: string;
+	ZERNIO_API_KEY?: string;
 }
 
 export class ObfuscatorContainer extends Container {
@@ -346,8 +347,46 @@ Keep total caption under 150 characters.`;
 			});
 		}
 
-		// Step 9: Post to TikTok via Ayrshare
-		if (this.env.AYRSHARE_API_KEY) {
+		// Step 9: Post to TikTok via Zernio (or Ayrshare)
+		if (this.env.ZERNIO_API_KEY) {
+			await step.do('post-tiktok-zernio', async () => {
+				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
+				console.log(`Submitting video to Zernio TikTok: ${videoUrl}`);
+
+				// Step 9a: Fetch connected TikTok account ID
+				const accRes = await fetch("https://api.zernio.com/v1/accounts", {
+					headers: { "Authorization": `Bearer ${this.env.ZERNIO_API_KEY}` }
+				});
+				if (!accRes.ok) throw new Error(`Zernio accounts lookup failed: ${accRes.statusText}`);
+				const accData = await accRes.json() as any;
+				const tiktokAcc = (accData.accounts || []).find((a: any) => a.platform === 'tiktok' && a.enabled);
+
+				if (!tiktokAcc) {
+					console.warn("No active TikTok account found connected in Zernio profile.");
+					return { status: "skipped", reason: "no_tiktok_account" };
+				}
+
+				const payload = {
+					content: caption,
+					platforms: [{ platform: "tiktok", accountId: tiktokAcc._id }],
+					mediaItems: [{ type: "video", url: videoUrl }],
+					publishNow: true
+				};
+
+				const postRes = await fetch("https://zernio.com/api/v1/posts", {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${this.env.ZERNIO_API_KEY}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify(payload)
+				});
+
+				const postData = await postRes.text();
+				console.log("Zernio TikTok response:", postData);
+				return JSON.parse(postData);
+			});
+		} else if (this.env.AYRSHARE_API_KEY) {
 			await step.do('post-tiktok', async () => {
 				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
 				console.log(`Submitting video to Ayrshare TikTok: ${videoUrl}`);
