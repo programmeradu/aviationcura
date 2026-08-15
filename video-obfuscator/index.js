@@ -13,25 +13,39 @@ app.use((req, res, next) => {
     next();
 });
 
-app.post('/obfuscate', (req, res) => {
+app.use(express.json());
+
+app.post('/process', (req, res) => {
     const timestamp = Date.now();
+    const videoId = req.body.videoId;
+    
+    if (!videoId) {
+        return res.status(400).send("Missing videoId");
+    }
+
     const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    console.log(`[${timestamp}] Starting obfuscation...`);
+    console.log(`[${timestamp}] Starting yt-dlp download for ${videoId}...`);
 
-    const writeStream = fs.createWriteStream(tmpInput);
-    req.pipe(writeStream);
+    // Download best 1080p video + best audio directly to mp4
+    const ytdlp = spawn('yt-dlp', [
+        '-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '-o', tmpInput,
+        `https://www.youtube.com/watch?v=${videoId}`
+    ]);
 
-    writeStream.on('finish', () => {
-        console.log(`[${timestamp}] Video saved to disk. Running ffmpeg...`);
+    ytdlp.stdout.on('data', (data) => console.log(`[${timestamp} yt-dlp]: ${data.toString().trim()}`));
+    ytdlp.stderr.on('data', (data) => console.log(`[${timestamp} yt-dlp error]: ${data.toString().trim()}`));
+
+    ytdlp.on('close', (ytdlpCode) => {
+        if (ytdlpCode !== 0) {
+            console.error(`[${timestamp}] yt-dlp failed with code ${ytdlpCode}`);
+            return res.status(500).send("Download failed");
+        }
+
+        console.log(`[${timestamp}] Download complete. Running ffmpeg...`);
         
-        // Obfuscation parameters:
-        // -vf hflip (horizontal flip)
-        // -vf eq=saturation=1.1 (boost saturation by 10%)
-        // -vf crop=iw-10:ih-10 (slight crop to remove borders)
-        // -af atempo=1.05 (speed up audio by 5%)
-        // -vf setpts=0.95*PTS (speed up video by 5% to match audio)
         const ffmpeg = spawn('ffmpeg', [
             '-y',
             '-i', tmpInput,
@@ -46,7 +60,6 @@ app.post('/obfuscate', (req, res) => {
         ]);
 
         ffmpeg.stderr.on('data', (data) => {
-            // FFmpeg logs to stderr
             console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`);
         });
 
@@ -55,21 +68,15 @@ app.post('/obfuscate', (req, res) => {
             if (code === 0) {
                 res.download(tmpOutput, 'video.mp4', (err) => {
                     if (err) console.error(`[${timestamp}] Error sending file:`, err);
-                    
-                    // Cleanup tmp files
                     try { fs.unlinkSync(tmpInput); } catch(e){}
                     try { fs.unlinkSync(tmpOutput); } catch(e){}
                 });
             } else {
                 res.status(500).send("FFmpeg processing failed");
                 try { fs.unlinkSync(tmpInput); } catch(e){}
+                try { fs.unlinkSync(tmpOutput); } catch(e){}
             }
         });
-    });
-
-    writeStream.on('error', (err) => {
-        console.error(`[${timestamp}] Write stream error:`, err);
-        res.status(500).send("Failed to save input stream");
     });
 });
 
