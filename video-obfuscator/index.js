@@ -75,15 +75,14 @@ app.post('/process_url', (req, res) => {
         return res.status(400).send("Missing downloadUrl");
     }
 
-    console.log(`[${timestamp}] Streaming video from RapidAPI proxy URL to FFmpeg...`);
+    const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    // Stream headers immediately to prevent Cloudflare Worker timeouts
-    res.setHeader('Content-Type', 'video/mp4');
-    
+    console.log(`[${timestamp}] Streaming video from RapidAPI proxy URL to FFmpeg (writing to disk first)...`);
+
     // 1. Curl fetches the file and streams to stdout
     const curl = spawn('curl', ['-sL', '-A', 'Mozilla/5.0', downloadUrl]);
     
-    // 2. FFmpeg reads from stdin and streams to stdout
+    // 2. FFmpeg reads from stdin and writes to tmpOutput
     const ffmpeg = spawn('ffmpeg', [
         '-i', 'pipe:0',
         '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
@@ -93,14 +92,11 @@ app.post('/process_url', (req, res) => {
         '-crf', '23',          // Optimized for TikTok
         '-c:a', 'aac',
         '-b:a', '128k',
-        '-f', 'mp4',
-        '-movflags', 'frag_keyframe+empty_moov',
-        'pipe:1'
+        tmpOutput
     ]);
 
     // Pipe the data through the chain
     curl.stdout.pipe(ffmpeg.stdin);
-    ffmpeg.stdout.pipe(res);
 
     // Logging
     curl.stderr.on('data', (data) => console.log(`[${timestamp} curl]: ${data.toString().trim()}`));
@@ -113,7 +109,74 @@ app.post('/process_url', (req, res) => {
 
     ffmpeg.on('close', (code) => {
         console.log(`[${timestamp}] FFmpeg exited with code ${code}`);
-        if (!res.writableEnded) res.end();
+        if (code === 0) {
+            res.download(tmpOutput, 'video.mp4', (err) => {
+                if (err) console.error(`[${timestamp}] Error sending file:`, err);
+                try { fs.unlinkSync(tmpOutput); } catch(e){}
+            });
+        } else {
+            res.status(500).send("FFmpeg processing failed");
+            try { fs.unlinkSync(tmpOutput); } catch(e){}
+        }
+    });
+});
+
+app.post('/download_and_obfuscate', (req, res) => {
+    const timestamp = Date.now();
+    const videoId = req.body.videoId;
+    
+    if (!videoId) {
+        return res.status(400).send("Missing videoId");
+    }
+
+    const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    console.log(`[${timestamp}] Starting native yt-dlp download and obfuscation pipeline for ${youtubeUrl}`);
+
+    // 1. yt-dlp fetches the highest quality mp4 stream and pipes to stdout (-o -)
+    const ytdlp = spawn('yt-dlp', [
+        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '-o', '-', 
+        youtubeUrl
+    ]);
+    
+    // 2. FFmpeg reads from stdin and writes to tmpOutput
+    const ffmpeg = spawn('ffmpeg', [
+        '-i', 'pipe:0',
+        '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
+        '-af', 'atempo=1.05',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        tmpOutput
+    ]);
+
+    // Pipe the data through the chain
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    // Logging
+    ytdlp.stderr.on('data', (data) => console.log(`[${timestamp} yt-dlp]: ${data.toString().trim()}`));
+    ffmpeg.stderr.on('data', (data) => console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`));
+
+    // Error handling
+    ytdlp.on('close', (code) => {
+        if (code !== 0) console.error(`[${timestamp}] yt-dlp exited with code ${code}`);
+    });
+
+    ffmpeg.on('close', (code) => {
+        console.log(`[${timestamp}] FFmpeg exited with code ${code}`);
+        if (code === 0) {
+            res.download(tmpOutput, 'video.mp4', (err) => {
+                if (err) console.error(`[${timestamp}] Error sending file:`, err);
+                try { fs.unlinkSync(tmpOutput); } catch(e){}
+            });
+        } else {
+            res.status(500).send("FFmpeg processing failed");
+            try { fs.unlinkSync(tmpOutput); } catch(e){}
+        }
     });
 });
 

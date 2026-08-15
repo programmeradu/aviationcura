@@ -37,7 +37,7 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		// Step 1: Search YouTube
 		const searchResults = await step.do('search-youtube', async () => {
 			if (!this.env.YOUTUBE_API_KEY) throw new Error("Missing YOUTUBE_API_KEY");
-			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&maxResults=10&key=${this.env.YOUTUBE_API_KEY}`;
+			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&videoDuration=short&maxResults=50&key=${this.env.YOUTUBE_API_KEY}`;
 			const res = await fetch(url);
 			if (!res.ok) throw new Error(`YouTube Search failed: ${res.statusText}`);
 			const data = await res.json() as any;
@@ -137,71 +137,21 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 			return (response as any).response;
 		});
 
-		// Step 5: Download Video via RapidAPI & Upload to R2
+		// Step 5: Download Video via yt-dlp & Upload to R2
 		const r2Key = await step.do('download-and-store', async () => {
-			if (!this.env.RAPIDAPI_KEY) throw new Error("Missing RAPIDAPI_KEY");
-			
-			const initialUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=4k&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
-			let initRes = await fetch(initialUrl, {
-				headers: {
-					'x-rapidapi-key': this.env.RAPIDAPI_KEY,
-					'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
-				}
-			});
-			
-			// Fallback to 1080p if 4K is not available (which throws Bad Request)
-			if (!initRes.ok && initRes.status === 400) {
-				console.log("4K format not available, falling back to 1080p...");
-				const fallbackUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
-				initRes = await fetch(fallbackUrl, {
-					headers: {
-						'x-rapidapi-key': this.env.RAPIDAPI_KEY,
-						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
-					}
-				});
-			}
-
-			if (!initRes.ok) throw new Error(`RapidAPI init failed: ${initRes.statusText}`);
-			const initData = await initRes.json() as any;
-			const progressId = initData.progressId;
-			if (!progressId) throw new Error("No progressId from RapidAPI");
-
-			let downloadUrl = null;
-			let attempts = 0;
-			while (attempts < 20) {
-				await new Promise(r => setTimeout(r, 5000)); 
-				
-				const checkUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/progress?id=${progressId}`;
-				const checkRes = await fetch(checkUrl, {
-					headers: {
-						'x-rapidapi-key': this.env.RAPIDAPI_KEY,
-						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
-					}
-				});
-				const checkData = await checkRes.json() as any;
-				if (checkData.downloadUrl || checkData.url) {
-					downloadUrl = checkData.downloadUrl || checkData.url;
-					break;
-				}
-				attempts++;
-			}
-
-			if (!downloadUrl) throw new Error("Timeout waiting for RapidAPI download URL");
-
 			let finalStream: ReadableStream | null = null;
 
-			// Obfuscate using Cloudflare Containers
 			if (this.env.OBFUSCATOR) {
-				console.log("Sending download URL to Obfuscator Container to bypass Worker memory limits...");
+				console.log("Sending videoId to Obfuscator Container for native yt-dlp download & obfuscation...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Call the container's /process_url endpoint with the URL
-				const obsRes = await containerInstance.fetch("http://container/process_url", {
+				// Call the container's /download_and_obfuscate endpoint with the videoId
+				const obsRes = await containerInstance.fetch("http://container/download_and_obfuscate", {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
-					body: JSON.stringify({ downloadUrl })
+					body: JSON.stringify({ videoId: selectedVideo.videoId })
 				});
 				
 				if (!obsRes.ok) {
@@ -212,15 +162,65 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 				
 				// Use the streaming body directly so we don't blow up the Worker's memory!
 				finalStream = obsRes.body;
-				console.log("Video successfully obfuscated natively on Cloudflare!");
+				console.log("Video successfully downloaded and obfuscated natively on Cloudflare!");
 			} else {
 				throw new Error("OBFUSCATOR container is not configured! Cannot process video.");
 			}
 			
 			const objectKey = `${selectedVideo.videoId}.mp4`;
-			await this.env.VIDEOS_BUCKET.put(objectKey, finalStream, {
-				httpMetadata: { contentType: 'video/mp4' }
-			});
+			
+			if (finalStream) {
+				const multipartUpload = await this.env.VIDEOS_BUCKET.createMultipartUpload(objectKey, {
+					httpMetadata: { contentType: 'video/mp4' }
+				});
+				
+				try {
+					const reader = finalStream.getReader();
+					let partNumber = 1;
+					let chunks = [];
+					let currentSize = 0;
+					const MIN_PART_SIZE = 5 * 1024 * 1024; // 5MB limit for R2 parts
+					const uploadedParts = [];
+					
+					while (true) {
+						const { done, value } = await reader.read();
+						
+						if (value) {
+							chunks.push(value);
+							currentSize += value.byteLength;
+						}
+						
+						if (currentSize >= MIN_PART_SIZE || (done && currentSize > 0)) {
+							const combined = new Uint8Array(currentSize);
+							let offset = 0;
+							for (const chunk of chunks) {
+								combined.set(chunk, offset);
+								offset += chunk.byteLength;
+							}
+							
+							const part = await multipartUpload.uploadPart(partNumber, combined);
+							uploadedParts.push(part);
+							
+							partNumber++;
+							chunks = [];
+							currentSize = 0;
+						}
+						
+						if (done) break;
+					}
+					
+					// R2 requires at least one part to be uploaded even if it's empty, or you can just abort
+					if (uploadedParts.length === 0) {
+					    const part = await multipartUpload.uploadPart(1, new Uint8Array(0));
+					    uploadedParts.push(part);
+					}
+					
+					await multipartUpload.complete(uploadedParts);
+				} catch (err) {
+					await multipartUpload.abort();
+					throw err;
+				}
+			}
 			
 			return objectKey;
 		});
@@ -235,15 +235,17 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 		// Step 7: Post to Telegram (if configured)
 		if (this.env.TELEGRAM_BOT_TOKEN && this.env.TELEGRAM_CHAT_ID) {
 			await step.do('post-telegram', async () => {
+				// Read the video from R2 into a buffer so we can upload it directly to Telegram
+				const videoObject = await this.env.VIDEOS_BUCKET.get(r2Key);
+				if (!videoObject) throw new Error('Video not found in R2');
+				const videoArrayBuffer = await videoObject.arrayBuffer();
+				const videoBlob = new Blob([videoArrayBuffer], { type: 'video/mp4' });
+				console.log(`Uploading ${r2Key} to Telegram (${(videoArrayBuffer.byteLength / 1024 / 1024).toFixed(1)}MB)...`);
+
 				const formData = new FormData();
 				formData.append('chat_id', this.env.TELEGRAM_CHAT_ID);
 				formData.append('caption', caption);
-				
-				const videoObject = await this.env.VIDEOS_BUCKET.get(r2Key);
-				if (!videoObject) throw new Error("Video not found in R2");
-				
-				const blob = new Blob([await videoObject.arrayBuffer()], { type: 'video/mp4' });
-				formData.append('video', blob, `${selectedVideo.videoId}.mp4`);
+				formData.append('video', videoBlob, `${selectedVideo.videoId}.mp4`);
 
 				const tgUrl = `https://api.telegram.org/bot${this.env.TELEGRAM_BOT_TOKEN}/sendVideo`;
 				const tgRes = await fetch(tgUrl, {
@@ -251,10 +253,12 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 					body: formData
 				});
 
+				const tgBody = await tgRes.text();
 				if (!tgRes.ok) {
-					console.error("Telegram upload failed", await tgRes.text());
-					throw new Error("Failed to post to Telegram");
+					console.error(`Telegram upload failed [${tgRes.status}]:`, tgBody);
+					throw new Error(`Failed to post to Telegram: ${tgBody}`);
 				}
+				console.log('Successfully posted to Telegram!', tgBody);
 			});
 		}
 
@@ -362,6 +366,8 @@ export default {
 			const headers = new Headers();
 			object.writeHttpMetadata(headers);
 			headers.set('etag', object.httpEtag);
+			headers.set('Content-Length', object.size.toString());
+			headers.set('Accept-Ranges', 'bytes');
 
 			return new Response(object.body, { headers });
 		}
