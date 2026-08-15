@@ -113,23 +113,22 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 
 		// Step 4: Generate Caption with Workers AI
 		const caption = await step.do('generate-caption', async () => {
-			const cleanTitle = selectedVideo.title.replace(/[#@][\w-]+/g, '').trim();
-			const prompt = `Video Title: "${cleanTitle}"\nTags: "${(selectedVideo.tags || []).slice(0, 6).join(', ')}"\nCategory: "${activeNiche.replace('_', ' ')}"\n\nWrite a 2-line viral TikTok caption based SOLELY on the exact subject of this video title. Do NOT invent unrelated plots, objects, or actions.`;
+			const rawTitle = selectedVideo.title || '';
+			const cleanTitle = rawTitle.replace(/[#@][\w-]+/g, '').trim();
 			
-			const systemMessage = `You are a social media curator. You write short, intriguing captions for videos you discover.
-CRITICAL ACCURACY INSTRUCTIONS:
-- Your caption MUST be 100% truthful to the exact Video Title provided.
-- If the title is about "Amazon finds", write about Amazon finds/gadgets.
-- If the title is about "Cyprus beaches", write about Cyprus beaches and travel.
-- If the title is about "Soap carving", write about satisfying soap ASMR.
-- NEVER invent fictitious pilot landings, flying cars, or unrelated inventions unless the title explicitly states it.
-- Never claim ownership (do not say "we created" or "our product").
+			const prompt = `Creator's Original Video Title: "${rawTitle}"\nClean Subject: "${cleanTitle}"\nCategory: "${activeNiche.replace('_', ' ')}"\n\nFormat this video's title into a clean, punchy 2-line TikTok caption. Use the creator's EXACT words and topic. Do NOT invent actions, adjectives, or stories.`;
+			
+			const systemMessage = `You are a social media copy editor. Your job is to format the video title into a clean TikTok caption.
 
-Format:
-- Line 1: Hook about the video title
-- Line 2: Engaging question / CTA
-- 2-3 relevant hashtags at the end
-- Under 180 characters total.`;
+CRITICAL INSTRUCTIONS:
+1. Base the caption 100% on the creator's EXACT words in the title.
+2. DO NOT invent imaginary descriptions (do NOT say "gentle strokes", "mesmerizing patterns", "carving designs", or make up actions not stated in the title).
+3. Output format:
+Line 1: Cleaned version of the title
+Line 2: 1 simple question or call to action
+End with 2-3 relevant hashtags from the category.
+
+Keep total caption under 150 characters.`;
 
 			const response = await this.env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
 				messages: [
@@ -138,8 +137,8 @@ Format:
 				]
 			});
 			
-			// Extract just the text from the response object
-			return (response as any).response;
+			const generatedText = (response as any).response?.trim();
+			return generatedText || cleanTitle || rawTitle;
 		});
 
 		// Step 5: Download Video via yt-dlp & Upload to R2
@@ -379,7 +378,8 @@ Format:
 				console.log("Ayrshare response:", ayrData);
 
 				if (!ayrRes.ok) {
-					throw new Error(`TikTok Ayrshare posting failed [${ayrRes.status}]: ${ayrData}`);
+					console.warn(`TikTok Ayrshare notice [${ayrRes.status}]: ${ayrData}`);
+					return { status: "error", message: ayrData };
 				}
 				
 				return JSON.parse(ayrData);
