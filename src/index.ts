@@ -23,125 +23,160 @@ export class ObfuscatorContainer extends Container {
 
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
-		// Dynamic TikTok Niche Discovery Array (Algorithms love these)
+		// Dynamic Trending Curation Matrix (Aviation, High-Tech ASMR, Cyprus Lifestyle)
 		const trendingNiches = [
-			{ niche: 'aviation', queries: ['a380 takeoff', 'boeing 747 landing', 'fighter jet sonic boom', 'cockpit view takeoff'] },
-			{ niche: 'cyprus_tourism', queries: ['cyprus beaches 4k', 'ayia napa drone 4k', 'cyprus crystal clear water', 'cyprus blue lagoon akamas', 'cyprus sea caves travel'] },
-			{ niche: 'cyprus_lifestyle', queries: ['limassol marina luxury', 'cyprus luxury villas', 'living in cyprus expat', 'cyprus food culture', 'paphos cyprus walking tour 4k'] },
-			{ niche: 'tech_gadgets', queries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets', 'tech you need under $50'] },
-			{ niche: 'oddly_satisfying', queries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
-			{ niche: 'dark_psychology', queries: ['body language secrets', 'dark psychology tricks', 'how to read people', 'manipulation techniques to watch out for'] },
-			{ niche: 'luxury_lifestyle', queries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses'] }
+			{ niche: 'aviation', query: 'aviation', ytQueries: ['a380 takeoff', 'boeing 747 landing', 'fighter jet sonic boom', 'cockpit view takeoff'] },
+			{ niche: 'oddly_satisfying', query: 'satisfying asmr', ytQueries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
+			{ niche: 'tech_gadgets', query: 'cool gadgets', ytQueries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets'] },
+			{ niche: 'cyprus_tourism', query: 'cyprus travel', ytQueries: ['cyprus beaches 4k', 'ayia napa drone 4k', 'cyprus crystal clear water'] },
+			{ niche: 'luxury_lifestyle', query: 'luxury cars penthouses', ytQueries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses'] }
 		];
 		const selectedCategory = trendingNiches[Math.floor(Math.random() * trendingNiches.length)];
-		const keyword = selectedCategory.queries[Math.floor(Math.random() * selectedCategory.queries.length)];
 		const activeNiche = selectedCategory.niche;
 
-		// Step 1: Search YouTube
-		const searchResults = await step.do('search-youtube', async () => {
-			if (!this.env.YOUTUBE_API_KEY) throw new Error("Missing YOUTUBE_API_KEY");
-			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&videoDuration=short&maxResults=50&relevanceLanguage=en&key=${this.env.YOUTUBE_API_KEY}`;
-			const res = await fetch(url);
-			if (!res.ok) throw new Error(`YouTube Search failed: ${res.statusText}`);
-			const data = await res.json() as any;
-			return data.items.map((item: any) => ({
+		// Step 1: Smart Multi-Source Discovery (TikTok Queue with strict Quota-Guard + YouTube 2K Fallback)
+		const selectedVideo = await step.do('discover-video', async () => {
+			// Sub-step 1a: Check if we have unused high-velocity clips in our local D1 TikTok Queue
+			const queueItem = await this.env.DB.prepare(
+				`SELECT * FROM tiktok_queue WHERE used = 0 ORDER BY likes DESC LIMIT 1`
+			).first() as any;
+
+			if (queueItem) {
+				console.log(`[TikTok Queue] Using cached viral video from D1: ${queueItem.title} (${queueItem.views} views, ${queueItem.likes} likes)`);
+				await this.env.DB.prepare(`UPDATE tiktok_queue SET used = 1 WHERE id = ?`).bind(queueItem.id).run();
+				return {
+					source: 'tiktok',
+					videoId: queueItem.id,
+					title: queueItem.title,
+					downloadUrl: queueItem.play_url,
+					author: queueItem.author,
+					niche: queueItem.niche || activeNiche,
+					soundId: queueItem.music_id,
+					soundTitle: queueItem.music_title
+				};
+			}
+
+			// Sub-step 1b: If queue is empty, make ONE quota-efficient batch call to TikTok Scraper (fetches 20 clips at once)
+			console.log(`[TikTok Scout] Queue empty. Performing 1 batched discovery call for niche: ${selectedCategory.query}...`);
+			try {
+				const ttUrl = `https://tiktok-scraper7.p.rapidapi.com/feed/search?keywords=${encodeURIComponent(selectedCategory.query)}&count=20`;
+				const ttRes = await fetch(ttUrl, {
+					headers: {
+						'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
+						'x-rapidapi-host': 'tiktok-scraper7.p.rapidapi.com',
+						'Content-Type': 'application/json'
+					}
+				});
+
+				if (ttRes.ok) {
+					const ttData = await ttRes.json() as any;
+					const videos = ttData?.data?.videos || [];
+					console.log(`[TikTok Scout] Retrieved ${videos.length} viral candidates in 1 single API call.`);
+
+					if (videos.length > 0) {
+						// Filter out videos we already published
+						const ids = videos.map((v: any) => v.video_id || v.id).filter(Boolean);
+						const placeholders = ids.map(() => '?').join(',');
+						const { results } = await this.env.DB.prepare(
+							`SELECT videoId FROM videos WHERE videoId IN (${placeholders})`
+						).bind(...ids).all();
+						const seenIds = new Set(results.map(r => r.videoId));
+
+						const newVideos = videos.filter((v: any) => {
+							const vid = v.video_id || v.id;
+							return vid && !seenIds.has(vid) && v.play;
+						});
+
+						if (newVideos.length > 0) {
+							// Batch-insert new videos into D1 Queue
+							for (const v of newVideos) {
+								const vid = v.video_id || v.id;
+								try {
+									await this.env.DB.prepare(
+										`INSERT OR IGNORE INTO tiktok_queue (id, title, play_url, author, views, likes, music_id, music_title, niche, used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+									).bind(
+										vid,
+										v.title || '',
+										v.play,
+										v.author?.unique_id || '',
+										v.play_count || 0,
+										v.digg_count || 0,
+										v.music_info?.id || '',
+										v.music_info?.title || '',
+										activeNiche
+									).run();
+								} catch (e) {
+									console.warn("Queue insert error:", e);
+								}
+							}
+
+							// Pick the top viral video from this fresh batch
+							const picked = newVideos.sort((a: any, b: any) => (b.digg_count || 0) - (a.digg_count || 0))[0];
+							const pickedId = picked.video_id || picked.id;
+							await this.env.DB.prepare(`UPDATE tiktok_queue SET used = 1 WHERE id = ?`).bind(pickedId).run();
+
+							return {
+								source: 'tiktok',
+								videoId: pickedId,
+								title: picked.title || '',
+								downloadUrl: picked.play,
+								author: picked.author?.unique_id || '',
+								niche: activeNiche,
+								soundId: picked.music_info?.id || '',
+								soundTitle: picked.music_info?.title || ''
+							};
+						}
+					}
+				}
+			} catch (ttErr) {
+				console.warn("[TikTok Scout] Error during discovery batch, falling back to YouTube 2K:", ttErr);
+			}
+
+			// Sub-step 1c: YouTube 2K Search Fallback
+			console.log("[YouTube Scout] Discovering YouTube Shorts candidates...");
+			const ytQuery = selectedCategory.ytQueries[Math.floor(Math.random() * selectedCategory.ytQueries.length)];
+			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(ytQuery)}&type=video&videoDuration=short&maxResults=30&relevanceLanguage=en&key=${this.env.YOUTUBE_API_KEY}`;
+			const ytRes = await fetch(url);
+			if (!ytRes.ok) throw new Error(`YouTube Search failed: ${ytRes.statusText}`);
+			const ytData = await ytRes.json() as any;
+
+			const candidates = ytData.items.map((item: any) => ({
+				source: 'youtube',
 				videoId: item.id.videoId,
 				title: item.snippet.title,
 				channelTitle: item.snippet.channelTitle,
-				description: item.snippet.description
+				description: item.snippet.description,
+				niche: activeNiche
 			}));
-		});
 
-		// Step 2: Deduplicate against D1
-		const unseenVideos = await step.do('deduplicate', async () => {
-			const ids = searchResults.map((v: any) => v.videoId);
-			if (ids.length === 0) return [];
-			
+			// Deduplicate against D1
+			const ids = candidates.map((v: any) => v.videoId);
 			const placeholders = ids.map(() => '?').join(',');
 			const { results } = await this.env.DB.prepare(
 				`SELECT videoId FROM videos WHERE videoId IN (${placeholders})`
 			).bind(...ids).all();
-			
 			const seenIds = new Set(results.map(r => r.videoId));
-			return searchResults.filter((v: any) => !seenIds.has(v.videoId));
+			const unseen = candidates.filter((v: any) => !seenIds.has(v.videoId));
+
+			if (unseen.length === 0) throw new Error("No unseen YouTube videos found for query: " + ytQuery);
+			return unseen[Math.floor(Math.random() * unseen.length)];
 		});
 
-		if (unseenVideos.length === 0) {
-			console.log("No new videos found for keyword:", keyword);
-			return; // End workflow
-		}
-
-		// Step 3: Fetch statistics & filter hidden gems
-		const selectedVideo = await step.do('filter-gems', async () => {
-			const ids = unseenVideos.map((v: any) => v.videoId).join(',');
-			const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${ids}&key=${this.env.YOUTUBE_API_KEY}`;
-			const res = await fetch(url);
-			if (!res.ok) throw new Error(`YouTube Stats failed: ${res.statusText}`);
-			const data = await res.json() as any;
-			
-			const itemsMap = new Map();
-			for (const item of data.items) {
-				itemsMap.set(item.id, item);
-			}
-
-			// Helper to parse ISO 8601 duration like PT58S or PT1M12S to seconds
-			const parseDuration = (iso: string): number => {
-				const match = iso.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
-				if (!match) return 60;
-				const minutes = parseInt(match[1] || '0');
-				const seconds = parseInt(match[2] || '0');
-				return minutes * 60 + seconds;
-			};
-
-			const gems = [];
-			for (const video of unseenVideos) {
-				const item = itemsMap.get(video.videoId);
-				if (!item) continue;
-				const stats = item.statistics;
-				const snippet = item.snippet;
-				const contentDetails = item.contentDetails;
-
-				const durationSec = contentDetails?.duration ? parseDuration(contentDetails.duration) : 60;
-				// Prefer videos between 10s and 90s (optimal TikTok Short length)
-				if (durationSec > 90) continue;
-
-				// Attach clean full title, description, and tags
-				video.title = snippet.title || video.title;
-				video.description = snippet.description || '';
-				video.tags = snippet.tags || [];
-
-				const views = parseInt(stats.viewCount) || 0;
-				const likes = parseInt(stats.likeCount) || 0;
-				const engagementRate = views > 0 ? (likes / views) : 0;
-				
-				const isUnderTheRadar = (views > 0 && views <= 500000 && engagementRate >= 0.01);
-				const isPureGem = (views > 0 && views <= 50000 && engagementRate >= 0.03);
-				
-				if (isUnderTheRadar || isPureGem) {
-					gems.push(video);
-				}
-			}
-
-			const candidates = gems.length > 0 ? gems : unseenVideos;
-			return candidates[Math.floor(Math.random() * candidates.length)];
-		});
-
-		// Step 4: Generate Caption with Workers AI
+		// Step 2: Generate High-Converting UK Viral Caption with Workers AI
 		const caption = await step.do('generate-caption', async () => {
 			const rawTitle = selectedVideo.title || '';
 			const cleanTitle = rawTitle.replace(/[#@][\w-]+/g, '').trim();
 			
-			const prompt = `Creator's Original Video Title: "${rawTitle}"\nClean Subject: "${cleanTitle}"\nCategory: "${activeNiche.replace('_', ' ')}"\n\nFormat this video's title into a clean, punchy 2-line TikTok caption. Use the creator's EXACT words and topic. Do NOT invent actions, adjectives, or stories.`;
+			const prompt = `Creator's Original Video Title: "${rawTitle}"\nClean Subject: "${cleanTitle}"\nCategory: "${selectedVideo.niche || activeNiche}"\n\nFormat this video's title into a clean, punchy 2-line UK TikTok caption. Use the creator's EXACT words and topic. Do NOT invent fake descriptions.`;
 			
-			const systemMessage = `You are a social media copy editor. Your job is to format the video title into a clean TikTok caption.
-
+			const systemMessage = `You are a viral social media copy editor targeting UK and global FYP audiences.
 CRITICAL INSTRUCTIONS:
 1. Base the caption 100% on the creator's EXACT words in the title.
-2. DO NOT invent imaginary descriptions (do NOT say "gentle strokes", "mesmerizing patterns", "carving designs", or make up actions not stated in the title).
+2. DO NOT invent imaginary descriptions or stories not stated in the title.
 3. Output format:
 Line 1: Cleaned version of the title
 Line 2: 1 simple question or call to action
-End with 2-3 relevant hashtags from the category.
+End with 2-3 relevant hashtags (e.g. #aviation #uktiktok #fyp).
 
 Keep total caption under 150 characters.`;
 
@@ -156,14 +191,14 @@ Keep total caption under 150 characters.`;
 			return generatedText || cleanTitle || rawTitle;
 		});
 
-		// Step 5: Download Video via yt-dlp & Upload to R2
+		// Step 3: Download & Obfuscate Video via Container (with 2K -> 1080p -> 720p Resolution Ladder)
 		const r2Key = await step.do('download-and-store', async () => {
 			let finalStream: ReadableStream | null = null;
+			let videoUrl = selectedVideo.downloadUrl;
 
-			if (this.env.OBFUSCATOR) {
+			if (!videoUrl && selectedVideo.source === 'youtube') {
 				console.log("Fetching download URL from RapidAPI (trying 2K 1440p -> 1080p -> 720p)...");
 				const formats = ['1440', '1080', '720'];
-				let videoUrl: string | null = null;
 
 				for (const fmt of formats) {
 					try {
@@ -215,15 +250,16 @@ Keep total caption under 150 characters.`;
 						console.warn(`Error trying format ${fmt}:`, fmtErr);
 					}
 				}
+			}
 
-				if (!videoUrl) {
-					throw new Error(`Failed to acquire video stream URL across all quality tiers (1440p, 1080p, 720p) for video ${selectedVideo.videoId}`);
-				}
+			if (!videoUrl) {
+				throw new Error(`Failed to acquire video stream URL for video ${selectedVideo.videoId}`);
+			}
 
+			if (this.env.OBFUSCATOR) {
 				console.log("Sending download URL to Obfuscator Container for direct download & FFmpeg processing...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Delegate downloading and processing directly to the container to avoid double-proxy timeouts
 				const obsRes = await containerInstance.fetch("http://container/process_url", {
 					method: 'POST',
 					headers: {
