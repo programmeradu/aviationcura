@@ -345,14 +345,16 @@ Length & Format:
 		if (this.env.AYRSHARE_API_KEY) {
 			await step.do('post-tiktok', async () => {
 				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
-				
+				console.log(`Submitting video to Ayrshare TikTok: ${videoUrl}`);
+
 				const payload = {
 					post: caption,
 					platforms: ["tiktok"],
 					mediaUrls: [videoUrl],
-					tiktokOptions: {
-						privacyLevel: "private", // Private posts act as drafts on the profile
-						disableComment: false,
+					tikTokOptions: {
+						privacyLevel: "SELF_ONLY",
+						visibility: "private",
+						disableComments: false,
 						disableDuet: false,
 						disableStitch: false
 					}
@@ -367,11 +369,14 @@ Length & Format:
 					body: JSON.stringify(payload)
 				});
 
+				const ayrData = await ayrRes.text();
+				console.log("Ayrshare response:", ayrData);
+
 				if (!ayrRes.ok) {
-					console.error("TikTok Ayrshare posting failed", await ayrRes.text());
-				} else {
-					console.log("Successfully auto-posted to TikTok!");
+					throw new Error(`TikTok Ayrshare posting failed [${ayrRes.status}]: ${ayrData}`);
 				}
+				
+				return JSON.parse(ayrData);
 			});
 		}
 
