@@ -161,49 +161,63 @@ Keep total caption under 150 characters.`;
 			let finalStream: ReadableStream | null = null;
 
 			if (this.env.OBFUSCATOR) {
-				console.log("Fetching download URL from RapidAPI...");
-				const rapidApiUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
-				const rapidApiRes = await fetch(rapidApiUrl, {
-					method: 'GET',
-					headers: {
-						'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
-						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com',
-						'Content-Type': 'application/json'
-					}
-				});
-				
-				if (!rapidApiRes.ok) {
-					throw new Error(`RapidAPI failed: ${rapidApiRes.status} ${await rapidApiRes.text()}`);
-				}
-				
-				const rapidApiData = await rapidApiRes.json();
-				let videoUrl = rapidApiData.url;
-				
-				if (!videoUrl && rapidApiData.progressId) {
-					console.log(`RapidAPI returned progressId: ${rapidApiData.progressId}. Polling for completion...`);
-					let isFinished = false;
-					while (!isFinished) {
-						await new Promise(r => setTimeout(r, 3000));
-						const progressRes = await fetch(`https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/progress?id=${rapidApiData.progressId}`, {
+				console.log("Fetching download URL from RapidAPI (trying 2K 1440p -> 1080p -> 720p)...");
+				const formats = ['1440', '1080', '720'];
+				let videoUrl: string | null = null;
+
+				for (const fmt of formats) {
+					try {
+						const rapidApiUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=${fmt}&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+						const rapidApiRes = await fetch(rapidApiUrl, {
+							method: 'GET',
 							headers: {
 								'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
-								'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+								'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com',
+								'Content-Type': 'application/json'
 							}
 						});
-						if (!progressRes.ok) throw new Error("Failed to check progress");
-						const progressData = await progressRes.json();
-						
-						if (progressData.finished) {
-							videoUrl = progressData.downloadUrl || progressData.url;
-							isFinished = true;
-						} else {
-							console.log(`Progress: ${progressData.progress || 0}`);
+
+						if (!rapidApiRes.ok) {
+							console.log(`Format ${fmt} returned HTTP ${rapidApiRes.status}, falling back...`);
+							continue;
 						}
+
+						const rapidApiData = await rapidApiRes.json() as any;
+						if (rapidApiData.url) {
+							videoUrl = rapidApiData.url;
+							console.log(`Successfully obtained direct ${fmt}p stream URL!`);
+							break;
+						} else if (rapidApiData.progressId) {
+							console.log(`RapidAPI returned progressId for ${fmt}p: ${rapidApiData.progressId}. Polling...`);
+							let isFinished = false;
+							let pollAttempts = 0;
+							while (!isFinished && pollAttempts < 15) {
+								pollAttempts++;
+								await new Promise(r => setTimeout(r, 2500));
+								const progressRes = await fetch(`https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/progress?id=${rapidApiData.progressId}`, {
+									headers: {
+										'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
+										'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+									}
+								});
+								if (progressRes.ok) {
+									const progressData = await progressRes.json() as any;
+									if (progressData.finished) {
+										videoUrl = progressData.downloadUrl || progressData.url;
+										isFinished = true;
+										console.log(`Finished ${fmt}p download preparation!`);
+									}
+								}
+							}
+							if (videoUrl) break;
+						}
+					} catch (fmtErr) {
+						console.warn(`Error trying format ${fmt}:`, fmtErr);
 					}
 				}
-				
+
 				if (!videoUrl) {
-					throw new Error("RapidAPI response missing url: " + JSON.stringify(rapidApiData));
+					throw new Error(`Failed to acquire video stream URL across all quality tiers (1440p, 1080p, 720p) for video ${selectedVideo.videoId}`);
 				}
 
 				console.log("Fetching direct video stream...");
