@@ -123,19 +123,14 @@ app.post('/process_url', (req, res) => {
 
 app.post('/download_and_obfuscate', (req, res) => {
     const timestamp = Date.now();
-    const videoUrl = req.body.videoUrl;
-    
-    if (!videoUrl) {
-        return res.status(400).send("Missing videoUrl");
-    }
 
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    console.log(`[${timestamp}] Starting native ffmpeg download and obfuscation pipeline for URL`);
+    console.log(`[${timestamp}] Starting native ffmpeg download and obfuscation pipeline from HTTP stream`);
     
-    // FFmpeg reads from HTTP stream and writes to tmpOutput
+    // FFmpeg reads from stdin (HTTP stream) and writes to tmpOutput
     const ffmpeg = spawn('ffmpeg', [
-        '-i', videoUrl,
+        '-i', 'pipe:0',
         '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
         '-af', 'atempo=1.05',
         '-c:v', 'libx264',
@@ -145,6 +140,8 @@ app.post('/download_and_obfuscate', (req, res) => {
         '-b:a', '128k',
         tmpOutput
     ]);
+
+    req.pipe(ffmpeg.stdin);
 
     // Logging
     ffmpeg.stderr.on('data', (data) => console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`));

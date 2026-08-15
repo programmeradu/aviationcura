@@ -164,16 +164,20 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 					throw new Error("RapidAPI response missing url: " + JSON.stringify(rapidApiData));
 				}
 
-				console.log("Sending videoUrl to Obfuscator Container for native FFmpeg download & obfuscation...");
+				console.log("Fetching direct video stream...");
+				const mp4Res = await fetch(videoUrl);
+				if (!mp4Res.ok) throw new Error("Failed to download MP4 from RapidAPI url");
+
+				console.log("Streaming direct MP4 to Obfuscator Container for FFmpeg processing...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Call the container's /download_and_obfuscate endpoint with the videoUrl
+				// Post the stream directly to the container
 				const obsRes = await containerInstance.fetch("http://container/download_and_obfuscate", {
 					method: 'POST',
+					body: mp4Res.body,
 					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({ videoUrl })
+						'Content-Type': 'application/octet-stream'
+					}
 				});
 				
 				if (!obsRes.ok) {
