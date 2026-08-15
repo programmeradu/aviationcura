@@ -142,16 +142,38 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 			let finalStream: ReadableStream | null = null;
 
 			if (this.env.OBFUSCATOR) {
-				console.log("Sending videoId to Obfuscator Container for native yt-dlp download & obfuscation...");
+				console.log("Fetching download URL from RapidAPI...");
+				const rapidApiUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=720&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+				const rapidApiRes = await fetch(rapidApiUrl, {
+					method: 'GET',
+					headers: {
+						'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
+						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com',
+						'Content-Type': 'application/json'
+					}
+				});
+				
+				if (!rapidApiRes.ok) {
+					throw new Error(`RapidAPI failed: ${rapidApiRes.status} ${await rapidApiRes.text()}`);
+				}
+				
+				const rapidApiData = await rapidApiRes.json();
+				const videoUrl = rapidApiData.url;
+				
+				if (!videoUrl) {
+					throw new Error("RapidAPI response missing url: " + JSON.stringify(rapidApiData));
+				}
+
+				console.log("Sending videoUrl to Obfuscator Container for native FFmpeg download & obfuscation...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Call the container's /download_and_obfuscate endpoint with the videoId
+				// Call the container's /download_and_obfuscate endpoint with the videoUrl
 				const obsRes = await containerInstance.fetch("http://container/download_and_obfuscate", {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
-					body: JSON.stringify({ videoId: selectedVideo.videoId })
+					body: JSON.stringify({ videoUrl })
 				});
 				
 				if (!obsRes.ok) {
@@ -162,7 +184,7 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 				
 				// Use the streaming body directly so we don't blow up the Worker's memory!
 				finalStream = obsRes.body;
-				console.log("Video successfully downloaded and obfuscated natively on Cloudflare!");
+				console.log("Video successfully obfuscated natively on Cloudflare!");
 			} else {
 				throw new Error("OBFUSCATOR container is not configured! Cannot process video.");
 			}

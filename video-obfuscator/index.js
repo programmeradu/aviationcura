@@ -123,27 +123,19 @@ app.post('/process_url', (req, res) => {
 
 app.post('/download_and_obfuscate', (req, res) => {
     const timestamp = Date.now();
-    const videoId = req.body.videoId;
+    const videoUrl = req.body.videoUrl;
     
-    if (!videoId) {
-        return res.status(400).send("Missing videoId");
+    if (!videoUrl) {
+        return res.status(400).send("Missing videoUrl");
     }
 
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
-    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    console.log(`[${timestamp}] Starting native yt-dlp download and obfuscation pipeline for ${youtubeUrl}`);
-
-    // 1. yt-dlp fetches the highest quality mp4 stream and pipes to stdout (-o -)
-    const ytdlp = spawn('yt-dlp', [
-        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        '-o', '-', 
-        youtubeUrl
-    ]);
+    console.log(`[${timestamp}] Starting native ffmpeg download and obfuscation pipeline for URL`);
     
-    // 2. FFmpeg reads from stdin and writes to tmpOutput
+    // FFmpeg reads from HTTP stream and writes to tmpOutput
     const ffmpeg = spawn('ffmpeg', [
-        '-i', 'pipe:0',
+        '-i', videoUrl,
         '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
         '-af', 'atempo=1.05',
         '-c:v', 'libx264',
@@ -154,17 +146,8 @@ app.post('/download_and_obfuscate', (req, res) => {
         tmpOutput
     ]);
 
-    // Pipe the data through the chain
-    ytdlp.stdout.pipe(ffmpeg.stdin);
-
     // Logging
-    ytdlp.stderr.on('data', (data) => console.log(`[${timestamp} yt-dlp]: ${data.toString().trim()}`));
     ffmpeg.stderr.on('data', (data) => console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`));
-
-    // Error handling
-    ytdlp.on('close', (code) => {
-        if (code !== 0) console.error(`[${timestamp}] yt-dlp exited with code ${code}`);
-    });
 
     ffmpeg.on('close', (code) => {
         console.log(`[${timestamp}] FFmpeg exited with code ${code}`);
