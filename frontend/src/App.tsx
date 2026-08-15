@@ -127,17 +127,19 @@ export function App() {
     }
   };
 
-  const currentVideo = videos[selectedVideoIndex] || videos[0] || null;
+  const [customVideo, setCustomVideo] = useState<VideoData | null>(null);
+
+  const currentVideo = customVideo || videos[selectedVideoIndex] || videos[0] || null;
 
   const handleSelectVideo = (video: VideoData) => {
-    const idx = videos.findIndex((v) => v.id === video.id);
-    if (idx !== -1) {
-      setSelectedVideoIndex(idx);
-      setCaptionText(video.title);
-    }
+    setCustomVideo(video);
+    setCaptionText(video.title);
+    // Switch to preview tab on mobile when clicking a video
+    setMobileTab('preview');
   };
 
   const handlePrevVideo = () => {
+    setCustomVideo(null);
     if (selectedVideoIndex > 0) {
       const newIdx = selectedVideoIndex - 1;
       setSelectedVideoIndex(newIdx);
@@ -146,6 +148,7 @@ export function App() {
   };
 
   const handleNextVideo = () => {
+    setCustomVideo(null);
     if (selectedVideoIndex < videos.length - 1) {
       const newIdx = selectedVideoIndex + 1;
       setSelectedVideoIndex(newIdx);
