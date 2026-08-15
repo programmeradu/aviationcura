@@ -12,6 +12,8 @@ export interface Env {
 	TELEGRAM_CHAT_ID: string;
 	MICROSERVICE_URL?: string;
 	OBFUSCATOR: any;
+	REPLICATE_API_TOKEN?: string;
+	AYRSHARE_API_KEY?: string;
 }
 
 export class ObfuscatorContainer extends Container {
@@ -20,17 +22,17 @@ export class ObfuscatorContainer extends Container {
 
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
-		const keywords = [
-			'a380 takeoff',
-			'boeing 747 landing',
-			'fighter jet sonic boom',
-			'cockpit view takeoff',
-			'aviation emergency landing',
-			'airport ground control',
-			'crosswind landing challenge',
-			'private jet flyby'
+		// Dynamic TikTok Niche Discovery Array (Algorithms love these)
+		const trendingNiches = [
+			{ niche: 'aviation', queries: ['a380 takeoff', 'boeing 747 landing', 'fighter jet sonic boom', 'cockpit view takeoff'] },
+			{ niche: 'oddly_satisfying', queries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
+			{ niche: 'tech_gadgets', queries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets', 'tech you need under $50'] },
+			{ niche: 'dark_psychology', queries: ['body language secrets', 'dark psychology tricks', 'how to read people', 'manipulation techniques to watch out for'] },
+			{ niche: 'luxury_lifestyle', queries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses'] }
 		];
-		const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+		const selectedCategory = trendingNiches[Math.floor(Math.random() * trendingNiches.length)];
+		const keyword = selectedCategory.queries[Math.floor(Math.random() * selectedCategory.queries.length)];
+		const activeNiche = selectedCategory.niche;
 
 		// Step 1: Search YouTube
 		const searchResults = await step.do('search-youtube', async () => {
@@ -103,11 +105,11 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		const caption = await step.do('generate-caption', async () => {
 			const prompt = `Video title: ${selectedVideo.title}\nVideo description: ${selectedVideo.description}\n\nWrite a caption for sharing this aviation video as a curator (not the creator). Follow the hook/value/CTA structure exactly.`;
 			
-			const systemMessage = `You are a social media curator running an aviation content discovery account. You find incredible aviation videos made by OTHER creators and share them with your audience — you are NEVER the creator, filmer, or owner of the video.
+			const systemMessage = `You are a social media curator running a viral content discovery account focused on the '${activeNiche}' niche. You find incredible videos made by OTHER creators and share them with your audience — you are NEVER the creator, filmer, or owner of the video.
 
 Voice rules:
-- Never use "we/our" as if you filmed or produced this. Use curator framing: "found this," "this pilot did X," "watch this," "someone captured this," "this just landed on my feed"
-- Never claim ownership. Never say "our video," "we made," "our aircraft"
+- Never use "we/our" as if you filmed or produced this. Use curator framing: "found this," "watch this," "someone captured this," "this just landed on my feed"
+- Never claim ownership. Never say "our video," "we made," "our product"
 
 Structure (always follow this order):
 1. HOOK (line 1): A specific, surprising claim or question about what's IN the video. Not a description — a reason to watch.
@@ -235,6 +237,71 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 				if (!tgRes.ok) {
 					console.error("Telegram upload failed", await tgRes.text());
 					throw new Error("Failed to post to Telegram");
+				}
+			});
+		}
+
+		// Step 8: AI Video Upscaling via Replicate
+		if (this.env.REPLICATE_API_TOKEN) {
+			await step.do('upscale-video', async () => {
+				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
+				console.log(`Sending video to Replicate for AI upscaling: ${videoUrl}`);
+				
+				const repRes = await fetch("https://api.replicate.com/v1/predictions", {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${this.env.REPLICATE_API_TOKEN}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({
+						version: "018a4146a848a604cc7d3c054238e55e09f7a7ebc447a118181cc00d11019d0d", // Example: cjwbw/video-restoration model
+						input: {
+							video: videoUrl,
+							enhance_faces: false,
+							upscale: 2
+						}
+					})
+				});
+
+				if (!repRes.ok) {
+					console.error("Replicate API failed", await repRes.text());
+				} else {
+					console.log("Video successfully queued for AI Upscaling!");
+					// In a real production setup, we would setup a webhook or poll for the result here.
+				}
+			});
+		}
+
+		// Step 9: Post to TikTok via Ayrshare
+		if (this.env.AYRSHARE_API_KEY) {
+			await step.do('post-tiktok', async () => {
+				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
+				
+				const payload = {
+					post: caption,
+					platforms: ["tiktok"],
+					mediaUrls: [videoUrl],
+					tiktokOptions: {
+						privacyLevel: "public",
+						disableComment: false,
+						disableDuet: false,
+						disableStitch: false
+					}
+				};
+
+				const ayrRes = await fetch("https://app.ayrshare.com/api/post", {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${this.env.AYRSHARE_API_KEY}`,
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify(payload)
+				});
+
+				if (!ayrRes.ok) {
+					console.error("TikTok Ayrshare posting failed", await ayrRes.text());
+				} else {
+					console.log("Successfully auto-posted to TikTok!");
 				}
 			});
 		}
