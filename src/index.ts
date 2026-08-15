@@ -517,6 +517,8 @@ export default {
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
 				});
 			}
+		}
+
 		if (url.pathname === '/api/publish-telegram' && request.method === 'POST') {
 			try {
 				const body = await request.json() as any;
