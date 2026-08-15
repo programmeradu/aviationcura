@@ -85,12 +85,37 @@ export function App() {
     try {
       const res = await fetch('/api/trigger', { method: 'POST' });
       if (res.ok) {
-        console.log('Workflow triggered successfully');
-        // Refresh videos list after 8 seconds
-        setTimeout(() => {
-          fetchVideos();
-          setIsTriggering(false);
-        }, 8000);
+        const data = await res.json() as any;
+        console.log('Workflow triggered:', data);
+        const instanceId = data.id;
+
+        if (instanceId) {
+          // Poll workflow status every 3 seconds
+          let attempts = 0;
+          const interval = setInterval(async () => {
+            attempts++;
+            try {
+              const statusRes = await fetch(`/api/workflow-status/${instanceId}`);
+              if (statusRes.ok) {
+                const statusData = await statusRes.json() as any;
+                console.log('Workflow status poll:', statusData);
+                if (statusData.status === 'complete' || statusData.status === 'errored' || attempts > 60) {
+                  clearInterval(interval);
+                  await fetchVideos();
+                  setSelectedVideoIndex(0);
+                  setIsTriggering(false);
+                }
+              }
+            } catch (pollErr) {
+              console.error('Polling error:', pollErr);
+            }
+          }, 3000);
+        } else {
+          setTimeout(() => {
+            fetchVideos();
+            setIsTriggering(false);
+          }, 15000);
+        }
       } else {
         setIsTriggering(false);
       }

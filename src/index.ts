@@ -453,8 +453,25 @@ export default {
 		if (url.pathname === '/api/trigger' && request.method === 'POST') {
 			const instance = await env.MY_WORKFLOW.create();
 			return new Response(JSON.stringify({ id: instance.id, status: 'started' }), {
-				headers: { 'Content-Type': 'application/json' }
+				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
 			});
+		}
+
+		if (url.pathname.startsWith('/api/workflow-status/')) {
+			const instanceId = url.pathname.split('/').pop();
+			if (!instanceId) return new Response(JSON.stringify({ error: "Missing instance ID" }), { status: 400 });
+			try {
+				const instance = await env.MY_WORKFLOW.get(instanceId);
+				const status = await instance.status();
+				return new Response(JSON.stringify(status), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ error: err.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
 		}
 
 		if (url.pathname === '/api/videos') {
