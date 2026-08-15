@@ -166,19 +166,20 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		const caption = await step.do('generate-caption', async () => {
 			const rawTitle = selectedVideo.title || '';
 			const cleanTitle = rawTitle.replace(/[#@][\w-]+/g, '').trim();
+			const authorTag = selectedVideo.author ? `@${selectedVideo.author}` : '';
 			
-			const prompt = `Creator's Original Video Title: "${rawTitle}"\nClean Subject: "${cleanTitle}"\nCategory: "${selectedVideo.niche || activeNiche}"\n\nFormat this video's title into a clean, punchy 2-line UK TikTok caption. Use the creator's EXACT words and topic. Do NOT invent fake descriptions.`;
+			const prompt = `Video Title: "${rawTitle}"\nSubject: "${cleanTitle}"\nOriginal Creator Handle: "${authorTag}"\nCategory: "${selectedVideo.niche || activeNiche}"\n\nTask: Write a clean 2-line curator caption for TikTok. Convert all first-person language ("I", "my", "me", "I'm") into neutral 3rd-person curator perspective ("This room tour...", "Watch this incredible...", "POV: Exploring..."). Never claim you are the person in the video. If an author handle exists, give credit (e.g. "via @creator").`;
 			
-			const systemMessage = `You are a viral social media copy editor targeting UK and global FYP audiences.
-CRITICAL INSTRUCTIONS:
-1. Base the caption 100% on the creator's EXACT words in the title.
-2. DO NOT invent imaginary descriptions or stories not stated in the title.
-3. Output format:
-Line 1: Cleaned version of the title
-Line 2: 1 simple question or call to action
-End with 2-3 relevant hashtags (e.g. #aviation #uktiktok #fyp).
-
-Keep total caption under 150 characters.`;
+			const systemMessage = `You are a professional social media curator page editor (like @pubity, @earth, @aviationdaily).
+CRITICAL RULES:
+1. PERSPECTIVE: ALWAYS write in third-person curator voice or neutral POV. NEVER use "I", "my", "we", "me", "I'm".
+   - BAD: "I'm staying at Azia Resort in Paphos!"
+   - GOOD: "Exploring the Azia Resort & Spa in Paphos, Cyprus ✨ Would you stay here?"
+2. ACCURACY: Stay 100% faithful to what the video actually shows. Do not invent fictional backstories.
+3. FORMAT (Max 150 characters):
+   Line 1: Punchy descriptive hook (in 3rd person)
+   Line 2: 1 interactive question for viewers + Creator credit if present (e.g. "🎥: @creator")
+   End with 2-3 trending hashtags (#uktiktok #aviation #travel).`;
 
 			const response = await this.env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
 				messages: [
@@ -188,7 +189,8 @@ Keep total caption under 150 characters.`;
 			});
 			
 			const generatedText = (response as any).response?.trim();
-			return generatedText || cleanTitle || rawTitle;
+			const fallbackCaption = authorTag ? `${cleanTitle}\n🎥: ${authorTag} #fyp #viral` : `${cleanTitle}\n#fyp #viral`;
+			return generatedText || fallbackCaption;
 		});
 
 		// Step 3: Download & Obfuscate Video via Container (with 2K -> 1080p -> 720p Resolution Ladder)
