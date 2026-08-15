@@ -127,42 +127,51 @@ app.post('/process_url', (req, res) => {
 
 app.post('/download_and_obfuscate', (req, res) => {
     const timestamp = Date.now();
-
+    const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    console.log(`[${timestamp}] Starting native ffmpeg download and obfuscation pipeline from HTTP stream`);
-    
-    // FFmpeg reads from stdin (HTTP stream) and writes to tmpOutput
-    const ffmpeg = spawn('ffmpeg', [
-        '-i', 'pipe:0',
-            '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=0.95*PTS',
+    console.log(`[${timestamp}] Saving input stream to disk for FFmpeg...`);
+    const writeStream = fs.createWriteStream(tmpInput);
+    req.pipe(writeStream);
+
+    writeStream.on('finish', () => {
+        console.log(`[${timestamp}] Stream saved. Running FFmpeg (1080x1920 9:16 vertical, ultrafast)...`);
+        const ffmpeg = spawn('ffmpeg', [
+            '-y',
+            '-i', tmpInput,
+            '-vf', 'eq=saturation=1.1:contrast=1.05,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=0.95*PTS',
             '-pix_fmt', 'yuv420p',
             '-af', 'atempo=1.05',
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-crf', '23',
+            '-preset', 'ultrafast',
+            '-crf', '24',
             '-c:a', 'aac',
             '-b:a', '128k',
             '-ar', '44100',
-        tmpOutput
-    ]);
+            tmpOutput
+        ]);
 
-    req.pipe(ffmpeg.stdin);
+        ffmpeg.stderr.on('data', (data) => console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`));
 
-    // Logging
-    ffmpeg.stderr.on('data', (data) => console.log(`[${timestamp} ffmpeg]: ${data.toString().trim()}`));
-
-    ffmpeg.on('close', (code) => {
-        console.log(`[${timestamp}] FFmpeg exited with code ${code}`);
-        if (code === 0) {
-            res.download(tmpOutput, 'video.mp4', (err) => {
-                if (err) console.error(`[${timestamp}] Error sending file:`, err);
+        ffmpeg.on('close', (code) => {
+            console.log(`[${timestamp}] FFmpeg exited with code ${code}`);
+            if (code === 0) {
+                res.download(tmpOutput, 'video.mp4', (err) => {
+                    if (err) console.error(`[${timestamp}] Error sending file:`, err);
+                    try { fs.unlinkSync(tmpInput); } catch(e){}
+                    try { fs.unlinkSync(tmpOutput); } catch(e){}
+                });
+            } else {
+                res.status(500).send("FFmpeg processing failed");
+                try { fs.unlinkSync(tmpInput); } catch(e){}
                 try { fs.unlinkSync(tmpOutput); } catch(e){}
-            });
-        } else {
-            res.status(500).send("FFmpeg processing failed");
-            try { fs.unlinkSync(tmpOutput); } catch(e){}
-        }
+            }
+        });
+    });
+
+    writeStream.on('error', (err) => {
+        console.error(`[${timestamp}] Write stream error:`, err);
+        res.status(500).send("Failed to save input stream");
     });
 });
 
