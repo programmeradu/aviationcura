@@ -25,8 +25,10 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		// Dynamic TikTok Niche Discovery Array (Algorithms love these)
 		const trendingNiches = [
 			{ niche: 'aviation', queries: ['a380 takeoff', 'boeing 747 landing', 'fighter jet sonic boom', 'cockpit view takeoff'] },
-			{ niche: 'oddly_satisfying', queries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
+			{ niche: 'cyprus_tourism', queries: ['cyprus beaches 4k', 'ayia napa drone 4k', 'cyprus crystal clear water', 'cyprus blue lagoon akamas', 'cyprus sea caves travel'] },
+			{ niche: 'cyprus_lifestyle', queries: ['limassol marina luxury', 'cyprus luxury villas', 'living in cyprus expat', 'cyprus food culture', 'paphos cyprus walking tour 4k'] },
 			{ niche: 'tech_gadgets', queries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets', 'tech you need under $50'] },
+			{ niche: 'oddly_satisfying', queries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
 			{ niche: 'dark_psychology', queries: ['body language secrets', 'dark psychology tricks', 'how to read people', 'manipulation techniques to watch out for'] },
 			{ niche: 'luxury_lifestyle', queries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses'] }
 		];
@@ -409,16 +411,30 @@ export default {
 		if (url.pathname.startsWith('/api/video/')) {
 			const videoId = url.pathname.split('/').pop();
 			if (!videoId) return new Response('Invalid video ID', { status: 400 });
-			const object = await env.VIDEOS_BUCKET.get(`${videoId}.mp4`);
+			
+			const object = await env.VIDEOS_BUCKET.get(`${videoId}.mp4`, {
+				range: request.headers,
+				onlyIf: request.headers,
+			});
 			if (!object) return new Response('Not found', { status: 404 });
 			
 			const headers = new Headers();
 			object.writeHttpMetadata(headers);
 			headers.set('etag', object.httpEtag);
-			headers.set('Content-Length', object.size.toString());
+			headers.set('Content-Type', 'video/mp4');
+			headers.set('Access-Control-Allow-Origin', '*');
 			headers.set('Accept-Ranges', 'bytes');
 
-			return new Response(object.body, { headers });
+			// If range was requested and supported by R2
+			if (object.range) {
+				const { offset, length } = object.range as any;
+				headers.set('Content-Range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+				headers.set('Content-Length', length.toString());
+				return new Response(object.body, { headers, status: 206 });
+			}
+
+			headers.set('Content-Length', object.size.toString());
+			return new Response(object.body, { headers, status: 200 });
 		}
 
 		return new Response('Aviation Curator API', { status: 200 });

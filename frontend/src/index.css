@@ -8,27 +8,28 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #09090b;
-    color: #f4f4f5;
+    background-color: #000000;
+    color: #ededed;
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow-x: hidden;
+    letter-spacing: -0.01em;
   }
 }
 
-/* Custom scrollbars */
+/* Custom Minimal Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 9999px;
+  background: #27272a;
+  border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: #3f3f46;
 }
 
 .scrollbar-none {
@@ -39,61 +40,48 @@
   display: none;
 }
 
-/* Glassmorphism surfaces */
-.glass-panel {
-  background: rgba(18, 18, 23, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Flattened Monochromatic Surfaces */
+.flat-panel {
+  background-color: #0a0a0a;
+  border: 1px solid #222222;
 }
 
-.glass-card {
-  background: rgba(24, 24, 30, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.flat-card {
+  background-color: #111111;
+  border: 1px solid #222222;
 }
 
-.glass-pill {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.flat-card-subtle {
+  background-color: #0d0d0d;
+  border: 1px solid #1a1a1a;
 }
 
-/* Text glow & shadows */
-.text-shadow-subtle {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
+.flat-button-primary {
+  background-color: #ffffff;
+  color: #000000;
+  font-weight: 600;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.flat-button-primary:hover {
+  background-color: #e5e5e5;
+}
+.flat-button-primary:active {
+  transform: scale(0.98);
 }
 
-/* Keyframe animations */
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.95);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.15);
-    opacity: 0.3;
-  }
-  100% {
-    transform: scale(0.95);
-    opacity: 0.8;
-  }
+.flat-button-secondary {
+  background-color: #181818;
+  color: #ffffff;
+  border: 1px solid #27272a;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.flat-button-secondary:hover {
+  background-color: #222222;
+  border-color: #3f3f46;
 }
 
-.animate-pulse-ring {
-  animation: pulse-ring 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes spin-disc {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin-disc {
-  animation: spin-disc 6s linear infinite;
+/* Subtle Text Shadow for Video Overlays */
+.text-shadow-clean {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 2px 4px rgba(0, 0, 0, 0.7);
 }

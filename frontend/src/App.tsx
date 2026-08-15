@@ -41,7 +41,7 @@ export function App() {
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isTriggering, setIsTriggering] = useState(false);
-  const [activeNiche, setActiveNiche] = useState('tech_gadgets');
+  const [activeNiche, setActiveNiche] = useState('cyprus_tourism');
   const [captionText, setCaptionText] = useState('');
   const [mobileTab, setMobileTab] = useState<'preview' | 'controls' | 'history'>('preview');
 
@@ -128,18 +128,15 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-neutral-950 flex flex-col items-center justify-center space-y-4">
-        <div className="relative w-12 h-12">
-          <div className="absolute inset-0 rounded-full border-2 border-rose-500/20"></div>
-          <div className="absolute inset-0 rounded-full border-2 border-rose-500 border-t-transparent animate-spin"></div>
-        </div>
-        <p className="text-xs font-mono text-neutral-400">Loading Curator Studio...</p>
+      <div className="h-screen w-full bg-black flex flex-col items-center justify-center space-y-3">
+        <div className="w-6 h-6 border-2 border-white border-t-transparent animate-spin rounded-full"></div>
+        <p className="text-xs font-mono text-neutral-500">INITIALIZING STUDIO</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-black text-neutral-100 flex flex-col antialiased font-sans">
       {/* Top Bar */}
       <Header
         onTriggerRun={handleTriggerRun}
@@ -149,33 +146,33 @@ export function App() {
       />
 
       {/* Mobile Tab Navigation */}
-      <div className="lg:hidden flex items-center justify-around bg-neutral-900 border-b border-neutral-800 px-2 py-2">
+      <div className="lg:hidden flex items-center justify-around bg-[#0a0a0a] border-b border-[#222222] px-2 py-2">
         <button
           onClick={() => setMobileTab('preview')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-            mobileTab === 'preview' ? 'bg-rose-500 text-white' : 'text-neutral-400'
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
+            mobileTab === 'preview' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
           }`}
         >
-          <Smartphone size={14} />
+          <Smartphone size={13} />
           <span>Preview</span>
         </button>
         <button
           onClick={() => setMobileTab('controls')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-            mobileTab === 'controls' ? 'bg-rose-500 text-white' : 'text-neutral-400'
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
+            mobileTab === 'controls' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
           }`}
         >
-          <Sliders size={14} />
-          <span>Studio Controls</span>
+          <Sliders size={13} />
+          <span>Controls</span>
         </button>
         <button
           onClick={() => setMobileTab('history')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-            mobileTab === 'history' ? 'bg-rose-500 text-white' : 'text-neutral-400'
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
+            mobileTab === 'history' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
           }`}
         >
-          <Database size={14} />
-          <span>Catalog ({videos.length})</span>
+          <Database size={13} />
+          <span>Archive ({videos.length})</span>
         </button>
       </div>
 
@@ -188,56 +185,56 @@ export function App() {
           }`}
         >
           {/* Phone Mockup Frame */}
-          <div className="relative w-full max-w-[340px] sm:max-w-[360px] aspect-[9/16] max-h-[82vh] bg-black rounded-[38px] p-2.5 shadow-2xl border-[5px] border-neutral-800 ring-1 ring-white/10 flex flex-col overflow-hidden">
-            {/* Phone Notch/Island */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 w-24 h-4 bg-neutral-900 rounded-full z-40 flex items-center justify-end pr-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-neutral-800 border border-neutral-700"></div>
+          <div className="relative w-full max-w-[340px] sm:max-w-[360px] aspect-[9/16] max-h-[82vh] bg-black rounded-[32px] p-2 border border-[#27272a] shadow-2xl flex flex-col overflow-hidden">
+            {/* Phone Top Notch Bar */}
+            <div className="absolute top-3.5 left-1/2 -translate-x-1/2 w-20 h-3.5 bg-[#121212] rounded-full z-40 flex items-center justify-end pr-2">
+              <div className="w-2 h-2 rounded-full bg-[#202020]"></div>
             </div>
 
             {/* Internal Screen Area */}
-            <div className="relative flex-1 w-full h-full rounded-[28px] overflow-hidden bg-neutral-950">
+            <div className="relative flex-1 w-full h-full rounded-[24px] overflow-hidden bg-[#050505]">
               {currentVideo ? (
                 <VideoPlayer video={currentVideo} isActive={true} />
               ) : (
-                <div className="h-full flex items-center justify-center text-xs text-neutral-500">
-                  No video selected
+                <div className="h-full flex items-center justify-center text-xs text-neutral-500 font-mono">
+                  NO VIDEO SELECTED
                 </div>
               )}
             </div>
           </div>
 
-          {/* Quick Video Switcher Controls under Phone */}
-          <div className="mt-3.5 flex items-center space-x-3 text-xs">
+          {/* Video Switcher Controls */}
+          <div className="mt-3.5 flex items-center space-x-2.5 text-xs font-mono">
             <button
               onClick={handlePrevVideo}
               disabled={selectedVideoIndex === 0}
-              className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1.5 rounded bg-[#111111] border border-[#222222] hover:bg-[#1a1a1a] hover:border-[#333333] disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
             >
-              <ChevronLeft size={14} />
-              <span>Previous</span>
+              <ChevronLeft size={13} />
+              <span>PREV</span>
             </button>
-            <span className="text-neutral-500 font-mono">
+            <span className="text-neutral-500 px-2">
               {selectedVideoIndex + 1} / {videos.length}
             </span>
             <button
               onClick={handleNextVideo}
               disabled={selectedVideoIndex === videos.length - 1}
-              className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1.5 rounded bg-[#111111] border border-[#222222] hover:bg-[#1a1a1a] hover:border-[#333333] disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
             >
-              <span>Next</span>
-              <ChevronRight size={14} />
+              <span>NEXT</span>
+              <ChevronRight size={13} />
             </button>
           </div>
         </div>
 
-        {/* Right Column: Command Center & Catalog Tabs */}
+        {/* Right Column: Command Center & Archive */}
         <div
-          className={`lg:col-span-7 flex flex-col space-y-6 ${
+          className={`lg:col-span-7 flex flex-col space-y-5 ${
             mobileTab === 'controls' || mobileTab === 'history' ? 'block' : 'hidden lg:flex'
           }`}
         >
           {mobileTab === 'history' ? (
-            <div className="glass-panel rounded-3xl border border-white/10 shadow-2xl">
+            <div className="flat-panel rounded-2xl overflow-hidden">
               <VideoHistoryDrawer
                 videos={videos}
                 selectedVideoId={currentVideo?.id || null}
@@ -247,7 +244,7 @@ export function App() {
           ) : (
             <>
               {/* Command Center */}
-              <div className="glass-panel rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
+              <div className="flat-panel rounded-2xl overflow-hidden">
                 <CommandCenter
                   currentVideo={currentVideo}
                   activeNiche={activeNiche}
@@ -258,8 +255,8 @@ export function App() {
                 />
               </div>
 
-              {/* Curated Catalog Section below Command Center on Desktop */}
-              <div className="hidden lg:block glass-panel rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
+              {/* Archive Section */}
+              <div className="hidden lg:block flat-panel rounded-2xl overflow-hidden">
                 <VideoHistoryDrawer
                   videos={videos}
                   selectedVideoId={currentVideo?.id || null}

@@ -20,11 +20,13 @@ interface CommandCenterProps {
 }
 
 const NICHES = [
-  { id: 'aviation', name: 'Aviation & Jets', icon: '✈️', tag: '#aviation' },
-  { id: 'tech_gadgets', name: 'Tech & Gadgets', icon: '⚡', tag: '#techfinds' },
-  { id: 'oddly_satisfying', name: 'Oddly Satisfying', icon: '🧼', tag: '#asmr' },
-  { id: 'dark_psychology', name: 'Psychology Secrets', icon: '🧠', tag: '#mindset' },
-  { id: 'luxury_lifestyle', name: 'Luxury Lifestyle', icon: '💎', tag: '#luxury' }
+  { id: 'cyprus_tourism', name: 'Cyprus Tourism', icon: '🏛️' },
+  { id: 'cyprus_lifestyle', name: 'Cyprus Lifestyle', icon: '🌊' },
+  { id: 'aviation', name: 'Aviation', icon: '✈️' },
+  { id: 'tech_gadgets', name: 'Tech Gadgets', icon: '⚡' },
+  { id: 'oddly_satisfying', name: 'Oddly Satisfying', icon: '🧼' },
+  { id: 'dark_psychology', name: 'Psychology', icon: '🧠' },
+  { id: 'luxury_lifestyle', name: 'Luxury', icon: '💎' }
 ];
 
 export const CommandCenter: React.FC<CommandCenterProps> = ({
@@ -45,81 +47,107 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   };
 
   const handleManualDispatch = (platform: 'telegram' | 'tiktok') => {
-    setDispatchStatus(`Dispatching to ${platform === 'telegram' ? 'Telegram' : 'TikTok (Draft)'}...`);
+    setDispatchStatus(`Dispatching to ${platform === 'telegram' ? 'Telegram' : 'TikTok (Private Draft)'}...`);
     setTimeout(() => {
-      setDispatchStatus(`Successfully pushed to ${platform === 'telegram' ? 'Telegram Channel' : 'TikTok Private Draft'}!`);
+      setDispatchStatus(`Pushed to ${platform === 'telegram' ? 'Telegram' : 'TikTok Private Draft'} successfully.`);
       setTimeout(() => setDispatchStatus(null), 3000);
-    }, 1200);
+    }, 1000);
   };
 
   const charCount = captionText.length;
   const isOverLimit = charCount > 220;
 
   return (
-    <div className="h-full flex flex-col space-y-5 overflow-y-auto p-4 lg:p-6 text-neutral-200">
-      {/* Real-time Status Alert / Banner */}
+    <div className="h-full flex flex-col space-y-4 p-4 lg:p-6 text-neutral-200">
+      {/* Real-time Status Alert */}
       {dispatchStatus && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center justify-between animate-fade-in">
+        <div className="p-3 rounded-md bg-[#161616] border border-[#27272a] text-neutral-200 text-xs font-mono flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Check size={16} className="text-emerald-400" />
+            <Check size={14} className="text-white" />
             <span>{dispatchStatus}</span>
           </div>
         </div>
       )}
 
-      {/* Live Pipeline Stepper */}
-      <div className="glass-card rounded-2xl p-4 sm:p-5 border border-white/5 shadow-xl">
-        <div className="flex items-center justify-between mb-3.5">
+      {/* Automated Pipeline Status */}
+      <div className="flat-card rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
-            <Radio size={16} className={isTriggering ? "text-rose-500 animate-pulse" : "text-neutral-500"} />
-            <h2 className="text-sm font-bold text-white tracking-wide uppercase">Automated Pipeline Status</h2>
+            <Radio size={14} className={isTriggering ? 'text-white animate-pulse' : 'text-neutral-500'} />
+            <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider font-mono">
+              Pipeline Stage
+            </h2>
           </div>
-          <span className="text-[11px] text-neutral-400 font-mono">
-            {isTriggering ? 'Phase: Processing...' : 'Phase: Idle / Ready'}
+          <span className="text-[10px] text-neutral-500 font-mono">
+            {isTriggering ? 'ACTIVE PROCESSING' : 'STANDBY'}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className={`p-2.5 rounded-xl text-center border transition-all ${isTriggering ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' : 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400'}`}>
-            <span className="text-[10px] block text-neutral-500 font-mono">STEP 1</span>
-            <span className="text-xs font-semibold">YouTube Discovery</span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+          <div
+            className={`p-2.5 rounded-lg border text-center transition-colors ${
+              isTriggering
+                ? 'bg-white text-black border-white font-bold'
+                : 'bg-[#0d0d0d] border-[#222222] text-neutral-400'
+            }`}
+          >
+            <span className="block text-[9px] text-neutral-500">01</span>
+            <span>Discovery</span>
           </div>
-          <div className={`p-2.5 rounded-xl text-center border transition-all ${isTriggering ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400'}`}>
-            <span className="text-[10px] block text-neutral-500 font-mono">STEP 2</span>
-            <span className="text-xs font-semibold">Llama AI Hook</span>
+          <div
+            className={`p-2.5 rounded-lg border text-center transition-colors ${
+              isTriggering
+                ? 'bg-white text-black border-white font-bold'
+                : 'bg-[#0d0d0d] border-[#222222] text-neutral-400'
+            }`}
+          >
+            <span className="block text-[9px] text-neutral-500">02</span>
+            <span>AI Caption</span>
           </div>
-          <div className={`p-2.5 rounded-xl text-center border transition-all ${isTriggering ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400'}`}>
-            <span className="text-[10px] block text-neutral-500 font-mono">STEP 3</span>
-            <span className="text-xs font-semibold">FFmpeg Obfuscate</span>
+          <div
+            className={`p-2.5 rounded-lg border text-center transition-colors ${
+              isTriggering
+                ? 'bg-white text-black border-white font-bold'
+                : 'bg-[#0d0d0d] border-[#222222] text-neutral-400'
+            }`}
+          >
+            <span className="block text-[9px] text-neutral-500">03</span>
+            <span>FFmpeg</span>
           </div>
-          <div className={`p-2.5 rounded-xl text-center border transition-all ${isTriggering ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400'}`}>
-            <span className="text-[10px] block text-neutral-500 font-mono">STEP 4</span>
-            <span className="text-xs font-semibold">R2 & TikTok Dispatch</span>
+          <div
+            className={`p-2.5 rounded-lg border text-center transition-colors ${
+              isTriggering
+                ? 'bg-white text-black border-white font-bold'
+                : 'bg-[#0d0d0d] border-[#222222] text-neutral-400'
+            }`}
+          >
+            <span className="block text-[9px] text-neutral-500">04</span>
+            <span>Dispatch</span>
           </div>
         </div>
       </div>
 
-      {/* Niche Selector */}
-      <div className="glass-card rounded-2xl p-4 sm:p-5 border border-white/5 shadow-xl">
+      {/* Target Niche Selector */}
+      <div className="flat-card rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-white tracking-wide uppercase flex items-center gap-2">
-            <Layers size={16} className="text-pink-400" />
-            <span>Target Niche</span>
+          <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
+            <Layers size={13} className="text-neutral-400" />
+            <span>Niches</span>
           </h2>
-          <span className="text-[11px] text-neutral-400">Select active category</span>
+          <span className="text-[11px] text-neutral-500 font-mono">Select target</span>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {NICHES.map((niche) => {
             const isSelected = activeNiche.toLowerCase() === niche.id.toLowerCase();
             return (
               <button
                 key={niche.id}
                 onClick={() => onSelectNiche(niche.id)}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                   isSelected
-                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25 scale-[1.02]'
-                    : 'bg-neutral-900/90 text-neutral-300 hover:bg-neutral-800 border border-neutral-800'
+                    ? 'bg-white text-black font-semibold'
+                    : 'bg-[#0d0d0d] text-neutral-400 hover:text-white border border-[#222222] hover:border-[#333333]'
                 }`}
               >
                 <span>{niche.icon}</span>
@@ -131,22 +159,28 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       </div>
 
       {/* Caption Studio & Editor */}
-      <div className="glass-card rounded-2xl p-4 sm:p-5 border border-white/5 shadow-xl flex-1 flex flex-col">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-white tracking-wide uppercase flex items-center gap-2">
-            <Wand2 size={16} className="text-amber-400" />
-            <span>AI Caption Studio</span>
+      <div className="flat-card rounded-xl p-4 flex-1 flex flex-col">
+        <div className="flex items-center justify-between mb-2.5">
+          <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
+            <Wand2 size={13} className="text-neutral-400" />
+            <span>Caption Inspector</span>
           </h2>
           <div className="flex items-center space-x-2">
-            <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-md ${isOverLimit ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-neutral-800 text-neutral-400'}`}>
-              {charCount}/220 chars
+            <span
+              className={`text-[11px] font-mono px-2 py-0.5 rounded border ${
+                isOverLimit
+                  ? 'bg-neutral-900 text-neutral-200 border-white'
+                  : 'bg-[#0d0d0d] text-neutral-400 border-[#222222]'
+              }`}
+            >
+              {charCount}/220
             </span>
             <button
               onClick={handleCopyCaption}
-              className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition cursor-pointer"
+              className="p-1 rounded bg-[#181818] hover:bg-[#252525] border border-[#27272a] text-neutral-300 transition cursor-pointer"
               title="Copy caption"
             >
-              {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+              {copied ? <Check size={13} className="text-white" /> : <Copy size={13} />}
             </button>
           </div>
         </div>
@@ -154,49 +188,43 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         <textarea
           value={captionText}
           onChange={(e) => onChangeCaption(e.target.value)}
-          placeholder="AI-generated hook caption will appear here..."
-          rows={4}
-          className="w-full bg-neutral-950/80 rounded-xl p-3.5 text-xs text-neutral-100 placeholder-neutral-500 border border-neutral-800 focus:border-rose-500/50 focus:outline-none focus:ring-1 focus:ring-rose-500/30 transition resize-none leading-relaxed"
+          placeholder="AI caption..."
+          rows={3}
+          className="w-full bg-[#080808] rounded-lg p-3 text-xs text-neutral-100 placeholder-neutral-600 border border-[#222222] focus:border-[#444444] focus:outline-none transition resize-none leading-relaxed font-sans"
         />
 
-        {/* Video Metadata Inspector */}
+        {/* Video Attribution */}
         {currentVideo && (
-          <div className="mt-3.5 pt-3.5 border-t border-neutral-800/80 flex flex-wrap items-center justify-between text-[11px] text-neutral-400 gap-2">
-            <div className="flex items-center space-x-2">
-              <span className="font-semibold text-neutral-300">Source:</span>
-              <span className="truncate max-w-[180px] text-neutral-400">@{currentVideo.channel}</span>
-            </div>
+          <div className="mt-2.5 pt-2.5 border-t border-[#1c1c1c] flex items-center justify-between text-[11px] text-neutral-500 font-mono">
+            <span className="truncate max-w-[200px]">@{currentVideo.channel}</span>
             <div className="flex items-center space-x-3">
-              <span>❤️ {currentVideo.likes}</span>
-              <span>💬 {currentVideo.comments}</span>
-              <span>🔄 {currentVideo.shares}</span>
+              <span>{currentVideo.likes} likes</span>
+              <span>{currentVideo.comments} cmts</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Manual Dispatch Center */}
-      <div className="glass-card rounded-2xl p-4 sm:p-5 border border-white/5 shadow-xl">
-        <h2 className="text-sm font-bold text-white tracking-wide uppercase mb-3 flex items-center gap-2">
-          <Send size={16} className="text-cyan-400" />
-          <span>Manual Dispatch</span>
+      {/* Manual Dispatch Actions */}
+      <div className="flat-card rounded-xl p-4">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider font-mono mb-2.5 flex items-center gap-1.5">
+          <Send size={13} className="text-neutral-400" />
+          <span>Dispatch Controls</span>
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
             onClick={() => handleManualDispatch('tiktok')}
-            className="flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-neutral-900 to-neutral-800 hover:from-neutral-800 hover:to-neutral-700 text-neutral-100 border border-neutral-700 font-semibold text-xs transition cursor-pointer shadow-sm active:scale-95"
+            className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98"
           >
-            <span>📱</span>
-            <span>TikTok (Private Draft)</span>
+            TikTok (Draft)
           </button>
 
           <button
             onClick={() => handleManualDispatch('telegram')}
-            className="flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-600/30 to-blue-600/30 hover:from-sky-600/40 hover:to-blue-600/40 text-sky-200 border border-sky-500/30 font-semibold text-xs transition cursor-pointer shadow-sm active:scale-95"
+            className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold text-center cursor-pointer active:scale-98"
           >
-            <span>✈️</span>
-            <span>Send to Telegram</span>
+            Telegram
           </button>
 
           {currentVideo && (
@@ -205,10 +233,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
               download={`${currentVideo.id}.mp4`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 font-semibold text-xs transition cursor-pointer shadow-sm active:scale-95"
+              className="flat-button-secondary py-2 px-3 rounded-md text-xs font-semibold flex items-center justify-center space-x-1.5 cursor-pointer active:scale-98 text-center"
             >
-              <Download size={14} />
-              <span>Download MP4</span>
+              <Download size={12} />
+              <span>Download</span>
             </a>
           )}
         </div>
