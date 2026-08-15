@@ -98,7 +98,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
       <video
         ref={videoRef}
         src={video.url}
-        className="w-full h-full object-cover cursor-pointer"
+        className="w-full h-full object-contain cursor-pointer"
         onClick={togglePlay}
         onTimeUpdate={handleTimeUpdate}
         onError={() => setHasError(true)}
