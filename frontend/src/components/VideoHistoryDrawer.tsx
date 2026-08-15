@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Film, Database, RefreshCw, Zap, Flame, CheckCircle2, Clock } from 'lucide-react';
+import { Play, Film, RefreshCw, Zap, Flame, CheckCircle2, Clock } from 'lucide-react';
 import type { VideoData } from './VideoPlayer';
 
 interface QueuedItem {
