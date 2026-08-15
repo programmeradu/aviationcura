@@ -141,13 +141,25 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 		const r2Key = await step.do('download-and-store', async () => {
 			if (!this.env.RAPIDAPI_KEY) throw new Error("Missing RAPIDAPI_KEY");
 			
-			const initialUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=4k&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
-			const initRes = await fetch(initialUrl, {
+			let initRes = await fetch(initialUrl, {
 				headers: {
 					'x-rapidapi-key': this.env.RAPIDAPI_KEY,
 					'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
 				}
 			});
+			
+			// Fallback to 1080p if 4K is not available (which throws Bad Request)
+			if (!initRes.ok && initRes.status === 400) {
+				console.log("4K format not available, falling back to 1080p...");
+				const fallbackUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+				initRes = await fetch(fallbackUrl, {
+					headers: {
+						'x-rapidapi-key': this.env.RAPIDAPI_KEY,
+						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+					}
+				});
+			}
+
 			if (!initRes.ok) throw new Error(`RapidAPI init failed: ${initRes.statusText}`);
 			const initData = await initRes.json() as any;
 			const progressId = initData.progressId;
@@ -175,27 +187,20 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 
 			if (!downloadUrl) throw new Error("Timeout waiting for RapidAPI download URL");
 
-			const videoRes = await fetch(downloadUrl, {
-				headers: {
-					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-				}
-			});
-			if (!videoRes.ok) throw new Error("Failed to download MP4 from downloadUrl");
-			
-			let finalBuffer = await videoRes.arrayBuffer();
+			let finalStream: ReadableStream | null = null;
 
 			// Obfuscate using Cloudflare Containers
 			if (this.env.OBFUSCATOR) {
-				console.log("Sending video to Obfuscator Container on the Edge...");
+				console.log("Sending download URL to Obfuscator Container to bypass Worker memory limits...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Call the container's /obfuscate endpoint with the raw video buffer
-				const obsRes = await containerInstance.fetch("http://container/obfuscate", {
+				// Call the container's /process_url endpoint with the URL
+				const obsRes = await containerInstance.fetch("http://container/process_url", {
 					method: 'POST',
 					headers: {
-						'Content-Type': 'application/octet-stream'
+						'Content-Type': 'application/json'
 					},
-					body: finalBuffer
+					body: JSON.stringify({ downloadUrl })
 				});
 				
 				if (!obsRes.ok) {
@@ -204,14 +209,15 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 					throw new Error(`Container processing failed: ${obsRes.status} ${obsRes.statusText} - ${errText}`);
 				}
 				
-				finalBuffer = await obsRes.arrayBuffer();
+				// Use the streaming body directly so we don't blow up the Worker's memory!
+				finalStream = obsRes.body;
 				console.log("Video successfully obfuscated natively on Cloudflare!");
 			} else {
 				throw new Error("OBFUSCATOR container is not configured! Cannot process video.");
 			}
 			
 			const objectKey = `${selectedVideo.videoId}.mp4`;
-			await this.env.VIDEOS_BUCKET.put(objectKey, finalBuffer, {
+			await this.env.VIDEOS_BUCKET.put(objectKey, finalStream, {
 				httpMetadata: { contentType: 'video/mp4' }
 			});
 			
