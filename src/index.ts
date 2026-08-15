@@ -37,7 +37,7 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 		// Step 1: Search YouTube
 		const searchResults = await step.do('search-youtube', async () => {
 			if (!this.env.YOUTUBE_API_KEY) throw new Error("Missing YOUTUBE_API_KEY");
-			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&videoDuration=short&maxResults=50&key=${this.env.YOUTUBE_API_KEY}`;
+			const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&videoDuration=short&maxResults=50&relevanceLanguage=en&key=${this.env.YOUTUBE_API_KEY}`;
 			const res = await fetch(url);
 			if (!res.ok) throw new Error(`YouTube Search failed: ${res.statusText}`);
 			const data = await res.json() as any;
@@ -352,7 +352,7 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 					platforms: ["tiktok"],
 					mediaUrls: [videoUrl],
 					tiktokOptions: {
-						privacyLevel: "public",
+						privacyLevel: "private", // Private posts act as drafts on the profile
 						disableComment: false,
 						disableDuet: false,
 						disableStitch: false
