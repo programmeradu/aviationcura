@@ -722,6 +722,36 @@ export default {
 			return new Response(object.body, { headers, status: 200 });
 		}
 
+		// GET /api/stream-proxy?url=... — Proxy raw TikTok CDN video streams for browser preview
+		if (url.pathname === '/api/stream-proxy') {
+			const targetUrl = url.searchParams.get('url');
+			if (!targetUrl) return new Response('Missing url parameter', { status: 400 });
+
+			try {
+				const proxyRes = await fetch(targetUrl, {
+					headers: {
+						'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+						'Referer': 'https://www.tiktok.com/'
+					}
+				});
+
+				if (!proxyRes.ok) {
+					return new Response(`Proxy error: ${proxyRes.status}`, { status: proxyRes.status });
+				}
+
+				const headers = new Headers();
+				headers.set('Content-Type', 'video/mp4');
+				headers.set('Access-Control-Allow-Origin', '*');
+				headers.set('Accept-Ranges', 'bytes');
+				const cl = proxyRes.headers.get('Content-Length');
+				if (cl) headers.set('Content-Length', cl);
+
+				return new Response(proxyRes.body, { headers, status: 200 });
+			} catch (e: any) {
+				return new Response(`Proxy exception: ${e.message}`, { status: 500 });
+			}
+		}
+
 		return new Response('Aviation Curator API', { status: 200 });
 	},
 	async scheduled(event: any, env: Env, ctx: ExecutionContext) {

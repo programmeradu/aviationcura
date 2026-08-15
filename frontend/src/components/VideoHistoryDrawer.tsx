@@ -216,7 +216,7 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
                   if (item.play_url) {
                     onSelectVideo({
                       id: item.id,
-                      url: item.play_url,
+                      url: `/api/stream-proxy?url=${encodeURIComponent(item.play_url)}`,
                       title: item.title,
                       channel: item.author || 'tiktok_creator',
                       likes: (item.likes > 1000 ? (item.likes / 1000).toFixed(1) + 'K' : item.likes.toString()),
