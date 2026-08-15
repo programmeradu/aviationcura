@@ -618,7 +618,22 @@ export default {
 				if (!videoId) return new Response(JSON.stringify({ error: "Missing videoId" }), { status: 400 });
 
 				const publicWorkerUrl = "https://aviation-curator.samueladu1970.workers.dev";
-				const directVideoUrl = `${publicWorkerUrl}/api/video/${videoId}`;
+				let directVideoUrl = `${publicWorkerUrl}/api/video/${videoId}`;
+
+				// Check if video is already processed in R2
+				const r2Obj = await env.VIDEOS_BUCKET.head(`${videoId}.mp4`);
+				if (!r2Obj) {
+					// Check if it is a queued TikTok video in tiktok_queue
+					const queueItem = await env.DB.prepare(
+						`SELECT play_url, title FROM tiktok_queue WHERE id = ?`
+					).bind(videoId).first() as any;
+
+					if (queueItem && queueItem.play_url) {
+						// Stream through proxy so TikTok's server receives a valid clean URL
+						directVideoUrl = `${publicWorkerUrl}/api/stream-proxy?url=${encodeURIComponent(queueItem.play_url)}`;
+					}
+				}
+
 				const zernioApiKey = env.ZERNIO_API_KEY || "sk_e3b92c869e26159068d93c7da38c251af58211ee52b55bea92e22dc1af7d19ad";
 
 				// Fetch TikTok account details
@@ -648,7 +663,13 @@ export default {
 					},
 					body: JSON.stringify(zernioPayload)
 				});
-				const postData = await postRes.json();
+				const postData = await postRes.json() as any;
+
+				// Mark as used in tiktok_queue
+				try {
+					await env.DB.prepare(`UPDATE tiktok_queue SET used = 1 WHERE id = ?`).bind(videoId).run();
+				} catch (e) {}
+
 				return new Response(JSON.stringify({ success: true, data: postData }), {
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
 				});
