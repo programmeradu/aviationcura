@@ -476,12 +476,15 @@ export default {
 
 		if (url.pathname === '/api/videos') {
 			const { results } = await env.DB.prepare(
-				`SELECT * FROM videos ORDER BY created_at DESC LIMIT 20`
+				`SELECT * FROM videos ORDER BY rowid DESC LIMIT 100`
 			).all();
 			return new Response(JSON.stringify(results), {
 				headers: {
 					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*'
+					'Access-Control-Allow-Origin': '*',
+					'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+					'Pragma': 'no-cache',
+					'Expires': '0'
 				}
 			});
 		}

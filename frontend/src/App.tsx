@@ -44,11 +44,13 @@ export function App() {
   const [activeNiche, setActiveNiche] = useState('cyprus_tourism');
   const [captionText, setCaptionText] = useState('');
   const [mobileTab, setMobileTab] = useState<'preview' | 'controls' | 'history'>('preview');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Fetch real videos from Cloudflare Worker D1 API
   const fetchVideos = async () => {
+    setIsRefreshing(true);
     try {
-      const response = await fetch('/api/videos');
+      const response = await fetch(`/api/videos?t=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -62,7 +64,7 @@ export function App() {
             shares: Math.floor(Math.random() * 300) + 20
           }));
           setVideos(mapped);
-          setCaptionText(mapped[0]?.title || '');
+          setCaptionText((prev) => prev || mapped[0]?.title || '');
           return;
         }
       }
@@ -73,6 +75,7 @@ export function App() {
       setCaptionText(FALLBACK_VIDEOS[0].title);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -264,6 +267,8 @@ export function App() {
                 videos={videos}
                 selectedVideoId={currentVideo?.id || null}
                 onSelectVideo={handleSelectVideo}
+                onRefresh={fetchVideos}
+                isRefreshing={isRefreshing}
               />
             </div>
           ) : (
@@ -286,6 +291,8 @@ export function App() {
                   videos={videos}
                   selectedVideoId={currentVideo?.id || null}
                   onSelectVideo={handleSelectVideo}
+                  onRefresh={fetchVideos}
+                  isRefreshing={isRefreshing}
                 />
               </div>
             </>

@@ -1,17 +1,21 @@
 import React from 'react';
-import { Play, Film, Database } from 'lucide-react';
+import { Play, Film, Database, RefreshCw } from 'lucide-react';
 import type { VideoData } from './VideoPlayer';
 
 interface VideoHistoryDrawerProps {
   videos: VideoData[];
   selectedVideoId: string | null;
   onSelectVideo: (video: VideoData) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
   videos,
   selectedVideoId,
-  onSelectVideo
+  onSelectVideo,
+  onRefresh,
+  isRefreshing = false
 }) => {
   return (
     <div className="h-full flex flex-col p-4 lg:p-6 text-neutral-200">
@@ -22,7 +26,19 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
             Stored Archive
           </h2>
         </div>
-        <span className="text-[11px] text-neutral-500 font-mono">{videos.length} videos</span>
+        <div className="flex items-center space-x-2">
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="p-1 rounded bg-[#161616] hover:bg-[#222222] border border-[#27272a] text-neutral-400 hover:text-white transition cursor-pointer"
+              title="Sync / Refresh video list"
+            >
+              <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
+          <span className="text-[11px] text-neutral-500 font-mono">{videos.length} videos</span>
+        </div>
       </div>
 
       {videos.length === 0 ? (
