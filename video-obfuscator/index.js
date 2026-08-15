@@ -15,36 +15,18 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-app.post('/process', (req, res) => {
+app.post('/obfuscate', (req, res) => {
     const timestamp = Date.now();
-    const videoId = req.body.videoId;
-    
-    if (!videoId) {
-        return res.status(400).send("Missing videoId");
-    }
-
     const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    console.log(`[${timestamp}] Starting yt-dlp download for ${videoId}...`);
+    console.log(`[${timestamp}] Starting obfuscation...`);
 
-    // Download best 1080p video + best audio directly to mp4
-    const ytdlp = spawn('yt-dlp', [
-        '-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        '-o', tmpInput,
-        `https://www.youtube.com/watch?v=${videoId}`
-    ]);
+    const writeStream = fs.createWriteStream(tmpInput);
+    req.pipe(writeStream);
 
-    ytdlp.stdout.on('data', (data) => console.log(`[${timestamp} yt-dlp]: ${data.toString().trim()}`));
-    ytdlp.stderr.on('data', (data) => console.log(`[${timestamp} yt-dlp error]: ${data.toString().trim()}`));
-
-    ytdlp.on('close', (ytdlpCode) => {
-        if (ytdlpCode !== 0) {
-            console.error(`[${timestamp}] yt-dlp failed with code ${ytdlpCode}`);
-            return res.status(500).send("Download failed");
-        }
-
-        console.log(`[${timestamp}] Download complete. Running ffmpeg...`);
+    writeStream.on('finish', () => {
+        console.log(`[${timestamp}] Video saved to disk. Running ffmpeg...`);
         
         const ffmpeg = spawn('ffmpeg', [
             '-y',
@@ -77,6 +59,11 @@ app.post('/process', (req, res) => {
                 try { fs.unlinkSync(tmpOutput); } catch(e){}
             }
         });
+    });
+
+    writeStream.on('error', (err) => {
+        console.error(`[${timestamp}] Write stream error:`, err);
+        res.status(500).send("Failed to save input stream");
     });
 });
 

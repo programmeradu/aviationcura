@@ -137,32 +137,77 @@ Before responding, count the characters in your draft. If over 220, shorten it w
 			return (response as any).response;
 		});
 
-		// Step 5: Download & Obfuscate via Edge Container
+		// Step 5: Download Video via RapidAPI & Upload to R2
 		const r2Key = await step.do('download-and-store', async () => {
-			let finalBuffer: ArrayBuffer;
+			if (!this.env.RAPIDAPI_KEY) throw new Error("Missing RAPIDAPI_KEY");
+			
+			const initialUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+			const initRes = await fetch(initialUrl, {
+				headers: {
+					'x-rapidapi-key': this.env.RAPIDAPI_KEY,
+					'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+				}
+			});
+			if (!initRes.ok) throw new Error(`RapidAPI init failed: ${initRes.statusText}`);
+			const initData = await initRes.json() as any;
+			const progressId = initData.progressId;
+			if (!progressId) throw new Error("No progressId from RapidAPI");
 
+			let downloadUrl = null;
+			let attempts = 0;
+			while (attempts < 20) {
+				await new Promise(r => setTimeout(r, 5000)); 
+				
+				const checkUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/progress?id=${progressId}`;
+				const checkRes = await fetch(checkUrl, {
+					headers: {
+						'x-rapidapi-key': this.env.RAPIDAPI_KEY,
+						'x-rapidapi-host': 'youtube-mp4-mp3-downloader.p.rapidapi.com'
+					}
+				});
+				const checkData = await checkRes.json() as any;
+				if (checkData.downloadUrl || checkData.url) {
+					downloadUrl = checkData.downloadUrl || checkData.url;
+					break;
+				}
+				attempts++;
+			}
+
+			if (!downloadUrl) throw new Error("Timeout waiting for RapidAPI download URL");
+
+			const videoRes = await fetch(downloadUrl, {
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+				}
+			});
+			if (!videoRes.ok) throw new Error("Failed to download MP4 from downloadUrl");
+			
+			let finalBuffer = await videoRes.arrayBuffer();
+
+			// Obfuscate using Cloudflare Containers
 			if (this.env.OBFUSCATOR) {
-				console.log(`Instructing Edge Container to download and process videoId: ${selectedVideo.videoId}`);
+				console.log("Sending video to Obfuscator Container on the Edge...");
 				const containerInstance = getContainer(this.env.OBFUSCATOR, "global");
 				
-				// Call the container's /process endpoint with the videoId
-				const obsRes = await containerInstance.fetch("http://container/process", {
+				// Call the container's /obfuscate endpoint with the raw video buffer
+				const obsRes = await containerInstance.fetch("http://container/obfuscate", {
 					method: 'POST',
 					headers: {
-						'Content-Type': 'application/json'
+						'Content-Type': 'application/octet-stream'
 					},
-					body: JSON.stringify({ videoId: selectedVideo.videoId })
+					body: finalBuffer
 				});
 				
 				if (!obsRes.ok) {
-					console.error("Container processing failed", await obsRes.text());
-					throw new Error(`Container processing failed: ${obsRes.statusText}`);
+					const errText = await obsRes.text();
+					console.error("Container processing failed", errText);
+					throw new Error(`Container processing failed: ${obsRes.status} ${obsRes.statusText} - ${errText}`);
 				}
 				
 				finalBuffer = await obsRes.arrayBuffer();
-				console.log("Video successfully downloaded and obfuscated natively on Cloudflare!");
+				console.log("Video successfully obfuscated natively on Cloudflare!");
 			} else {
-				throw new Error("OBFUSCATOR container is not configured! Cannot download video.");
+				throw new Error("OBFUSCATOR container is not configured! Cannot process video.");
 			}
 			
 			const objectKey = `${selectedVideo.videoId}.mp4`;
