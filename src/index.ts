@@ -469,6 +469,57 @@ export default {
 			});
 		}
 
+		if (url.pathname === '/api/publish-tiktok' && request.method === 'POST') {
+			try {
+				const body = await request.json() as any;
+				const videoId = body.videoId;
+				const caption = body.caption || "Watch this amazing video! #viral #fyp";
+				if (!videoId) return new Response(JSON.stringify({ error: "Missing videoId" }), { status: 400 });
+
+				const publicWorkerUrl = "https://aviation-curator.samueladu1970.workers.dev";
+				const directVideoUrl = `${publicWorkerUrl}/api/video/${videoId}`;
+				const zernioApiKey = env.ZERNIO_API_KEY || "sk_e3b92c869e26159068d93c7da38c251af58211ee52b55bea92e22dc1af7d19ad";
+
+				// Fetch TikTok account details
+				const accRes = await fetch("https://zernio.com/api/v1/accounts", {
+					headers: { "Authorization": `Bearer ${zernioApiKey}` }
+				});
+				if (!accRes.ok) throw new Error("Failed to fetch Zernio accounts");
+				const accData = await accRes.json() as any;
+				const tiktokAcc = (accData.accounts || []).find((a: any) => a.platform === 'tiktok');
+				if (!tiktokAcc) throw new Error("No TikTok account connected in Zernio");
+
+				const zernioPayload = {
+					content: caption,
+					mediaUrls: [directVideoUrl],
+					publishNow: true,
+					platforms: [{
+						platform: "tiktok",
+						accountId: tiktokAcc._id || tiktokAcc.id,
+						profileId: tiktokAcc.profileId
+					}]
+				};
+
+				const postRes = await fetch("https://zernio.com/api/v1/posts", {
+					method: 'POST',
+					headers: {
+						'Authorization': `Bearer ${zernioApiKey}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(zernioPayload)
+				});
+				const postData = await postRes.json();
+				return new Response(JSON.stringify({ success: true, data: postData }), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ success: false, error: err.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
+		}
+
 		if (url.pathname.startsWith('/api/video/')) {
 			const videoId = url.pathname.split('/').pop();
 			if (!videoId) return new Response('Invalid video ID', { status: 400 });
