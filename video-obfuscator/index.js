@@ -31,13 +31,15 @@ app.post('/obfuscate', (req, res) => {
         const ffmpeg = spawn('ffmpeg', [
             '-y',
             '-i', tmpInput,
-            '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
+            '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=0.95*PTS',
+            '-pix_fmt', 'yuv420p',
             '-af', 'atempo=1.05',
             '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '16',
+            '-preset', 'veryfast',
+            '-crf', '23',
             '-c:a', 'aac',
-            '-b:a', '192k',
+            '-b:a', '128k',
+            '-ar', '44100',
             tmpOutput
         ]);
 
@@ -85,13 +87,15 @@ app.post('/process_url', (req, res) => {
     // 2. FFmpeg reads from stdin and writes to tmpOutput
     const ffmpeg = spawn('ffmpeg', [
         '-i', 'pipe:0',
-        '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
+        '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=0.95*PTS',
+        '-pix_fmt', 'yuv420p',
         '-af', 'atempo=1.05',
         '-c:v', 'libx264',
-        '-preset', 'veryfast', // Sped up significantly to prevent timeouts
-        '-crf', '23',          // Optimized for TikTok
+        '-preset', 'veryfast',
+        '-crf', '23',
         '-c:a', 'aac',
         '-b:a', '128k',
+        '-ar', '44100',
         tmpOutput
     ]);
 
@@ -131,13 +135,15 @@ app.post('/download_and_obfuscate', (req, res) => {
     // FFmpeg reads from stdin (HTTP stream) and writes to tmpOutput
     const ffmpeg = spawn('ffmpeg', [
         '-i', 'pipe:0',
-        '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,crop=iw-16:ih-16,setpts=0.95*PTS',
-        '-af', 'atempo=1.05',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-b:a', '128k',
+            '-vf', 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=0.95*PTS',
+            '-pix_fmt', 'yuv420p',
+            '-af', 'atempo=1.05',
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-ar', '44100',
         tmpOutput
     ]);
 
