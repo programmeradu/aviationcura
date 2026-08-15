@@ -162,7 +162,7 @@ Keep total caption under 150 characters.`;
 
 			if (this.env.OBFUSCATOR) {
 				console.log("Fetching download URL from RapidAPI...");
-				const rapidApiUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=720&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
+				const rapidApiUrl = `https://youtube-mp4-mp3-downloader.p.rapidapi.com/api/v1/download?format=1080&id=${selectedVideo.videoId}&audioQuality=128&addInfo=false&allowExtendedDuration=false`;
 				const rapidApiRes = await fetch(rapidApiUrl, {
 					method: 'GET',
 					headers: {

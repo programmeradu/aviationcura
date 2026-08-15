@@ -93,16 +93,15 @@ export function App() {
         const instanceId = data.id;
 
         if (instanceId) {
-          // Poll workflow status every 3 seconds
           let attempts = 0;
           const interval = setInterval(async () => {
             attempts++;
             try {
-              const statusRes = await fetch(`/api/workflow-status/${instanceId}`);
+              const statusRes = await fetch(`/api/workflow-status/${instanceId}?t=${Date.now()}`);
               if (statusRes.ok) {
                 const statusData = await statusRes.json() as any;
                 console.log('Workflow status poll:', statusData);
-                if (statusData.status === 'complete' || statusData.status === 'errored' || attempts > 60) {
+                if (statusData.status === 'complete' || statusData.status === 'errored' || statusData.status === 'terminated' || attempts > 120) {
                   clearInterval(interval);
                   await fetchVideos();
                   setSelectedVideoIndex(0);
@@ -114,8 +113,8 @@ export function App() {
             }
           }, 3000);
         } else {
-          setTimeout(() => {
-            fetchVideos();
+          setTimeout(async () => {
+            await fetchVideos();
             setIsTriggering(false);
           }, 15000);
         }
