@@ -534,6 +534,80 @@ export default {
 			});
 		}
 
+		// GET /api/queue — Fetch all mined TikTok clips waiting in backlog
+		if (url.pathname === '/api/queue') {
+			const { results } = await env.DB.prepare(
+				`SELECT id, title, play_url, author, views, likes, music_title, niche, used, created_at FROM tiktok_queue ORDER BY likes DESC LIMIT 100`
+			).all();
+			return new Response(JSON.stringify(results), {
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+					'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+				}
+			});
+		}
+
+		// POST /api/batch-mine-tiktok — Pull a custom batch (e.g. 10, 20, 30) of fresh viral clips from TikTok Scraper
+		if (url.pathname === '/api/batch-mine-tiktok' && request.method === 'POST') {
+			try {
+				const body = await request.json().catch(() => ({})) as any;
+				const count = Math.min(Math.max(body.count || 20, 5), 50);
+				const query = body.query || 'aviation';
+				const niche = body.niche || 'aviation';
+
+				const ttUrl = `https://tiktok-scraper7.p.rapidapi.com/feed/search?keywords=${encodeURIComponent(query)}&count=${count}`;
+				const ttRes = await fetch(ttUrl, {
+					headers: {
+						'x-rapidapi-key': 'ac8ba431dbmsh17931b53670dd9ap12864ejsn321a6756a503',
+						'x-rapidapi-host': 'tiktok-scraper7.p.rapidapi.com',
+						'Content-Type': 'application/json'
+					}
+				});
+
+				if (!ttRes.ok) {
+					return new Response(JSON.stringify({ success: false, error: `TikTok API failed: ${ttRes.statusText}` }), {
+						status: ttRes.status,
+						headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+					});
+				}
+
+				const ttData = await ttRes.json() as any;
+				const videos = ttData?.data?.videos || [];
+				let insertedCount = 0;
+
+				for (const v of videos) {
+					const vid = v.video_id || v.id;
+					if (!vid || !v.play) continue;
+					try {
+						await env.DB.prepare(
+							`INSERT OR IGNORE INTO tiktok_queue (id, title, play_url, author, views, likes, music_id, music_title, niche, used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+						).bind(
+							vid,
+							v.title || '',
+							v.play,
+							v.author?.unique_id || '',
+							v.play_count || 0,
+							v.digg_count || 0,
+							v.music_info?.id || '',
+							v.music_info?.title || '',
+							niche
+						).run();
+						insertedCount++;
+					} catch (e) {}
+				}
+
+				return new Response(JSON.stringify({ success: true, countRetrieved: videos.length, insertedCount }), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ success: false, error: err.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
+		}
+
 		if (url.pathname === '/api/publish-tiktok' && request.method === 'POST') {
 			try {
 				const body = await request.json() as any;
