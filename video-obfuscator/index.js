@@ -220,7 +220,7 @@ app.post('/render_documentary', async (req, res) => {
         fs.writeFileSync(tmpAss, scriptToAss(script, totalDuration), 'utf8');
         console.log(`[${timestamp}] Native-speed voiceover ready. Exact duration: ${totalDuration.toFixed(1)}s`);
 
-        // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed).
+        // Step 2: Download up to two ranked B-roll clips in parallel for concise narrative beats.
         // A successful HTTP download is not enough: a missing R2 asset can still return an
         // HTML/JSON error page that happens to be larger than the old size threshold. Validate
         // each candidate with ffprobe before passing it to FFmpeg; the graphic fallback remains
@@ -243,7 +243,7 @@ app.post('/render_documentary', async (req, res) => {
         if (validUrls.length === 0) {
             console.log(`[${timestamp}] No external B-roll provided, generating styled kinetic background...`);
         } else {
-            const urlsToFetch = validUrls.slice(0, 1);
+            const urlsToFetch = validUrls.slice(0, 2);
             console.log(`[${timestamp}] Downloading ${urlsToFetch.length} B-roll video assets in parallel...`);
             await Promise.all(urlsToFetch.map((url, i) => new Promise((resolve) => {
                 const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
@@ -288,8 +288,8 @@ app.post('/render_documentary', async (req, res) => {
                 filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
-            // Use one verified clip for stability. The archive source files can carry
-            // incompatible metadata that makes multi-input concat fail even after crop.
+            // All clips are normalized before concat, allowing a short, deliberate
+            // transition between the two strongest contextual narrative beats.
             if (numClips === 1) {
                 filterGraph += `[v0]null[vconcat];`;
             } else {

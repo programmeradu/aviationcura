@@ -41,6 +41,54 @@ function limitScriptToWordBudget(script: string, maximumWords = 105): string {
 	return selected.join(' ').trim() || normalized.split(/\s+/).slice(0, maximumWords).join(' ');
 }
 
+type ArchiveFootageRow = { videoId: string; title: string; keyword_used: string };
+
+const FOOTAGE_STOP_WORDS = new Set([
+	'the', 'and', 'for', 'with', 'from', 'this', 'that', 'into', 'over', 'about',
+	'what', 'when', 'where', 'after', 'before', 'their', 'your', 'they', 'were',
+	'flight', 'airways', 'video', 'shorts', 'part'
+]);
+
+function footageTokens(value: string): Set<string> {
+	return new Set((value.toLowerCase().match(/[a-z0-9]+/g) || [])
+		.filter((token) => token.length >= 3 && !FOOTAGE_STOP_WORDS.has(token)));
+}
+
+function rankContextualFootage(topic: string, visualCues: string, rows: ArchiveFootageRow[]) {
+	const cueTokens = footageTokens(visualCues);
+	const intent = footageTokens(`${topic} ${visualCues}`);
+	const intentText = `${topic} ${visualCues}`.toLowerCase();
+	if (/boeing\s*737|b737/.test(intentText)) intent.add('b737');
+	if (/boeing\s*747|b747/.test(intentText)) intent.add('b747');
+	if (/airbus\s*a?320/.test(intentText)) intent.add('a320');
+	if (/airbus\s*a?350/.test(intentText)) intent.add('a350');
+
+	const genericAviationTerms = new Set(['aircraft', 'airplane', 'plane', 'cockpit', 'pilot', 'airport', 'runway', 'landing', 'takeoff', 'cabin', 'airliner']);
+	const misleadingTerms = /private jet|fighter jet|sonic boom|crosswind|simulator|fight breaks|no deaths|luxury|car|asmr|psychology|gadget/i;
+
+	return rows.map((row) => {
+		const metadata = `${row.title || ''} ${row.keyword_used || ''}`;
+		const metadataTokens = footageTokens(metadata);
+		let score = 0;
+		const matches: string[] = [];
+
+		for (const token of metadataTokens) {
+			if (!intent.has(token)) continue;
+			matches.push(token);
+			score += cueTokens.has(token) ? 12 : (genericAviationTerms.has(token) ? 4 : 12);
+			if (/^(b737|b747|a320|a350)$/.test(token)) score += 18;
+		}
+		if (intent.has('b737') && /(b747|boeing\s*747|a320|a350)/i.test(metadata)) score -= 32;
+		if (intent.has('b747') && /(b737|boeing\s*737|a320|a350)/i.test(metadata)) score -= 32;
+		if (intent.has('a320') && /(b737|b747|boeing\s*7|a350)/i.test(metadata)) score -= 32;
+		if (intent.has('a350') && /(b737|b747|boeing\s*7|a320)/i.test(metadata)) score -= 32;
+		if (misleadingTerms.test(metadata)) score -= 18;
+		if (/cockpit|airport ground|aircraft parking|aircraft marshalling/i.test(metadata) && score > 0) score += 6;
+
+		return { ...row, score, matches };
+	}).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
+}
+
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
 		// Curated High-Velocity Niche Matrix (Aviation, Deep Sea, Micro-Restoration, Cyprus, Tech, Luxury, Psychology, ASMR)
@@ -1015,7 +1063,7 @@ RULES:
 2. Narrative must build tension and explain what happened with 100% historical accuracy.
 3. Total spoken words: between 90 and 105 words (approximately 35-45 seconds at a clear, natural documentary pace).
 4. Do NOT include stage directions, speaker labels, or bracketed notes. Output ONLY the raw spoken text.
-5. Provide 3 specific visual B-roll video search terms separated by commas on the very last line prefixed with "BROLL: "`;
+5. Provide 3 specific, truthful visual B-roll concepts for the narrative beats on the very last line prefixed with "BROLL: ". Use aircraft model, cockpit, cabin, airport, landing, runway, or map terms only when accurate. Do not request sensational or unrelated footage.`;
 
 				const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
 					messages: [
@@ -1051,23 +1099,24 @@ RULES:
 				});
 				const nativeAudioUrl = new URL(`/api/tts/${encodeURIComponent(nativeAudioKey)}`, request.url).toString();
 
-				// Step 3: Select real archived R2 footage for the visual layer. Earlier
-				// releases used an empty list, which intentionally produced a caption-only
-				// background. Prefer aviation/flight archive items and exclude documentary
-				// outputs, which may themselves be styled-background renders.
+				// Step 3: Rank the real archive against this incident and the script's visual
+				// cues. Earlier releases used a generic recency query, which could select a
+				// visually unrelated clip. Keep only the strongest contextual matches and use
+				// a conservative cockpit/aircraft fallback when the exact incident is absent.
 				const { results: archiveRows } = await env.DB.prepare(
 					`SELECT videoId, title, keyword_used FROM videos
 					 WHERE status = 'published' AND r2_url IS NOT NULL AND r2_url != ''
 					   AND keyword_used != 'documentary'
-					 ORDER BY
-					   CASE WHEN lower(keyword_used) LIKE '%aviation%'
-					          OR lower(keyword_used) LIKE '%flight%'
-					          OR lower(keyword_used) LIKE '%landing%'
-					          OR lower(title) LIKE '%aircraft%'
-					        THEN 0 ELSE 1 END,
-					   rowid DESC LIMIT 2`
-				).all<{ videoId: string }>();
-				const brollCandidates = archiveRows.map((row) =>
+					 ORDER BY rowid DESC LIMIT 80`
+				).all<ArchiveFootageRow>();
+				const rankedFootage = rankContextualFootage(topic, brollMatch?.[1] || '', archiveRows);
+				const contextualFootage = rankedFootage.filter((row) => row.score >= 15).slice(0, 2);
+				const conservativeFallback = rankedFootage.filter((row) =>
+					/(cockpit|aircraft|airport|runway|takeoff|landing|ground control)/i.test(`${row.title} ${row.keyword_used}`)
+				).slice(0, 1);
+				const selectedFootage = contextualFootage.length > 0 ? contextualFootage : conservativeFallback;
+				console.log(`[Mini-Doc AI] Visual archive selection: ${selectedFootage.map((row) => `${row.videoId} (${row.score})`).join(', ') || 'clean fallback'}`);
+				const brollCandidates = selectedFootage.map((row) =>
 					new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString()
 				);
 
