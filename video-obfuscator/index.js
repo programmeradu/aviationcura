@@ -195,8 +195,10 @@ app.post('/render_documentary', async (req, res) => {
                 filterGraph += `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
+            // Concatenate all B-roll clips seamlessly
+            filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
+
             // Burn kinetic subtitles if available, otherwise pass clean video
-            let subtitleFilter = '';
             if (fs.existsSync(tmpAss)) {
                 // Escape single quotes and colons for ffmpeg filter string
                 const safeAss = tmpAss.replace(/'/g, "\\'").replace(/:/g, '\\:');
