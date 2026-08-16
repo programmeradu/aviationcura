@@ -993,14 +993,30 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Use the renderer's fast styled-background path for now. The active
+				// Step 2: Synthesize narration through the existing Workers AI binding.
+				// The model returns a managed MP3 URL, allowing the container to focus only
+				// on bounded media assembly rather than making its own unbounded speech call.
+				const ttsResult = await env.AI.run('inworld/tts-1.5-max', {
+					apply_text_normalization: true,
+					output_format: 'mp3',
+					temperature: 1,
+					text: script,
+					timestamp_type: 'none',
+					voice_id: 'Dennis'
+				});
+				const nativeAudioUrl = (ttsResult as any)?.audio || (ttsResult as any)?.result?.audio || (ttsResult as any)?.response?.audio;
+				if (!nativeAudioUrl || typeof nativeAudioUrl !== 'string') {
+					throw new Error('Workers AI did not return a playable narration URL');
+				}
+
+				// Step 3: Use the renderer's fast styled-background path for now. The active
 				// container image still performs remote B-roll download and FFmpeg assembly in
 				// the synchronous request path, which exceeds the container deadline. Supplying
 				// an empty list produces the original narrated vertical render with kinetic
 				// subtitles, then reliably returns in time for R2/D1 persistence.
 				const brollCandidates: string[] = [];
 
-				// Step 3: Call Container to render full 1080x1920 video with neural voice & kinetic subtitles
+				// Step 4: Call Container to render full 1080x1920 video with native voice & kinetic subtitles
 				if (!env.OBFUSCATOR) {
 					return new Response(JSON.stringify({ success: false, error: "Obfuscator container not bound" }), { status: 500 });
 				}
@@ -1012,7 +1028,7 @@ RULES:
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
 						script,
-						voice,
+						nativeAudioUrl,
 						brollUrls: brollCandidates
 					})
 				});

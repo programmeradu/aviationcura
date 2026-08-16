@@ -48,7 +48,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   const [topics, setTopics] = useState<TopicPreset[]>([]);
   const [selectedTopic, setSelectedTopic] = useState('');
   const [customTopic, setCustomTopic] = useState('');
-  const [voice, setVoice] = useState('en-US-ChristopherNeural');
+  const [voice, setVoice] = useState('Dennis');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [generatedDoc, setGeneratedDoc] = useState<any | null>(null);
@@ -203,10 +203,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
             <div className="field-heading"><label htmlFor="voice">Narration</label><Volume2 size={14} /></div>
             <div className="select-shell">
               <select id="voice" value={voice} onChange={(event) => setVoice(event.target.value)}>
-                <option value="en-US-ChristopherNeural">Christopher — measured documentary</option>
-                <option value="en-US-EricNeural">Eric — dramatic storytelling</option>
-                <option value="en-GB-RyanNeural">Ryan — British documentary</option>
-                <option value="en-US-GuyNeural">Guy — conversational narrator</option>
+                <option value="Dennis">Dennis — native documentary narration</option>
               </select>
               <ChevronDown size={15} />
             </div>
