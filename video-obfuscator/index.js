@@ -262,9 +262,9 @@ app.post('/render_documentary', async (req, res) => {
             const clipDuration = totalDuration / numClips;
             let filterGraph = '';
 
-            // Scale and crop each B-roll clip into vertical 720x1280 (HD vertical, fast render) with high saturation
+            // Scale and crop the B-roll clip into a lightweight 540x960 vertical render with high saturation
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,format=yuv420p,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.12:contrast=1.05,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // Use one verified clip for stability. The archive source files can carry
@@ -291,9 +291,9 @@ app.post('/render_documentary', async (req, res) => {
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'fastdecode',
-                '-crf', '24',
+                '-crf', '28',
                 '-c:a', 'aac',
-                '-b:a', '128k',
+                '-b:a', '96k',
                 '-pix_fmt', 'yuv420p',
                 tmpOutput
             );
@@ -319,9 +319,9 @@ app.post('/render_documentary', async (req, res) => {
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'fastdecode',
-                '-crf', '24',
+                '-crf', '28',
                 '-c:a', 'aac',
-                '-b:a', '128k',
+                '-b:a', '96k',
                 '-pix_fmt', 'yuv420p',
                 tmpOutput
             );
