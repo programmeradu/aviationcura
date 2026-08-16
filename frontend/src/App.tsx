@@ -131,11 +131,31 @@ export function App() {
 
   const currentVideo = customVideo || videos[selectedVideoIndex] || videos[0] || null;
 
-  const handleSelectVideo = (video: VideoData) => {
+  const handleSelectVideo = async (video: VideoData) => {
     setCustomVideo(video);
     setCaptionText(video.title);
-    // Switch to preview tab on mobile when clicking a video
     setMobileTab('preview');
+
+    // Automatically generate clean 3rd-person AI caption if it looks like raw title
+    try {
+      const aiRes = await fetch('/api/generate-caption', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: video.title,
+          author: video.channel !== 'curator_network' ? video.channel : '',
+          niche: activeNiche
+        })
+      });
+      if (aiRes.ok) {
+        const aiData = await aiRes.json() as any;
+        if (aiData.success && aiData.caption) {
+          setCaptionText(aiData.caption);
+        }
+      }
+    } catch (e) {
+      console.warn("AI caption auto-fetch failed:", e);
+    }
   };
 
   const handlePrevVideo = () => {

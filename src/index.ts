@@ -642,7 +642,36 @@ export default {
 					} catch (e) {}
 				}
 
-				return new Response(JSON.stringify({ success: true, countRetrieved: videos.length, insertedCount }), {
+		// POST /api/generate-caption — Generate 3rd-person curator caption with Workers AI on demand
+		if (url.pathname === '/api/generate-caption' && request.method === 'POST') {
+			try {
+				const body = await request.json() as any;
+				const rawTitle = body.title || '';
+				const cleanTitle = rawTitle.replace(/[#@][\w-]+/g, '').trim();
+				const authorTag = body.author ? `@${body.author}` : '';
+				const niche = body.niche || 'aviation';
+
+				const prompt = `Video Title: "${rawTitle}"\nSubject: "${cleanTitle}"\nOriginal Creator Handle: "${authorTag}"\nCategory: "${niche}"\n\nTask: Write a clean 2-line curator caption for TikTok. Convert all first-person language ("I", "my", "me", "I'm") into neutral 3rd-person curator perspective ("This room tour...", "Watch this incredible...", "POV: Exploring..."). Never claim you are the person in the video. If an author handle exists, give credit (e.g. "via @creator").`;
+				
+				const systemMessage = `You are a professional social media curator page editor (like @pubity, @earth, @aviationdaily).
+CRITICAL RULES:
+1. PERSPECTIVE: ALWAYS write in third-person curator voice or neutral POV. NEVER use "I", "my", "we", "me", "I'm".
+2. ACCURACY: Stay 100% faithful to what the video actually shows. Do not invent fictional backstories.
+3. FORMAT (Max 150 characters):
+   Line 1: Punchy descriptive hook (in 3rd person)
+   Line 2: 1 interactive question for viewers + Creator credit if present (e.g. "🎥: @creator")
+   End with 2-3 trending hashtags (#uktiktok #aviation #travel).`;
+
+				const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+					messages: [
+						{ role: 'system', content: systemMessage },
+						{ role: 'user', content: prompt }
+					]
+				});
+
+				const generatedText = (aiRes as any).response?.trim();
+				const fallbackCaption = authorTag ? `${cleanTitle}\n🎥: ${authorTag} #fyp #viral` : `${cleanTitle}\n#fyp #viral`;
+				return new Response(JSON.stringify({ success: true, caption: generatedText || fallbackCaption }), {
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
 				});
 			} catch (err: any) {
