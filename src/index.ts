@@ -23,13 +23,23 @@ export class ObfuscatorContainer extends Container {
 
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
-		// Dynamic Trending Curation Matrix (Aviation, High-Tech ASMR, Cyprus Lifestyle)
+		// Curated High-Velocity Niche Matrix (Aviation, Deep Sea Extreme/Offshore, Micro-Restoration)
 		const trendingNiches = [
-			{ niche: 'aviation', query: 'aviation', ytQueries: ['a380 takeoff', 'boeing 747 landing', 'fighter jet sonic boom', 'cockpit view takeoff'] },
-			{ niche: 'oddly_satisfying', query: 'satisfying asmr', ytQueries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines'] },
-			{ niche: 'tech_gadgets', query: 'cool gadgets', ytQueries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets'] },
-			{ niche: 'cyprus_tourism', query: 'cyprus travel', ytQueries: ['cyprus beaches 4k', 'ayia napa drone 4k', 'cyprus crystal clear water'] },
-			{ niche: 'luxury_lifestyle', query: 'luxury cars penthouses', ytQueries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses'] }
+			{
+				niche: 'aviation',
+				query: 'cockpit crosswind landing aircraft carrier atc emergency',
+				ytQueries: ['cockpit crosswind landing 4k', 'f18 catapult launch aircraft carrier', 'atc pilot emergency landing audio', 'fighter jet extreme low pass']
+			},
+			{
+				niche: 'deep_sea_extreme',
+				query: 'deep sea saturation diver north sea oil rig rogue wave',
+				ytQueries: ['saturation diving dangerous work underwater', 'north sea rogue wave hitting ship', 'underwater welder deep ocean commercial diver', 'deepest oil rig saturation dive']
+			},
+			{
+				niche: 'micro_restoration',
+				query: 'rusty tool laser cleaning antique watchmaker restoration',
+				ytQueries: ['high power laser rust removal satisfying', 'patek philippe restoration microscopic clockmaker', 'rusty antique machine complete restoration', 'vintage timepiece repair micro mechanical']
+			}
 		];
 		const selectedCategory = trendingNiches[Math.floor(Math.random() * trendingNiches.length)];
 		const activeNiche = selectedCategory.niche;
