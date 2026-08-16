@@ -167,6 +167,7 @@ app.post('/render_documentary', async (req, res) => {
     if (!script) return res.status(400).send('Missing script');
 
     const tmpVoice = path.join('/tmp', `${timestamp}_voice.mp3`);
+    const tmpPacedVoice = path.join('/tmp', `${timestamp}_voice_paced.mp3`);
     const tmpVtt = path.join('/tmp', `${timestamp}_voice.vtt`);
     const tmpAss = path.join('/tmp', `${timestamp}_subtitles.ass`);
     const tmpOutput = path.join('/tmp', `${timestamp}_doc_out.mp4`);
@@ -193,10 +194,33 @@ app.post('/render_documentary', async (req, res) => {
             throw new Error('Native audio response was empty');
         }
 
-        // Measure exact native voiceover duration, then generate deterministic
-        // timed ASS subtitle groups from the completed script.
+        // Aura-1 produces natural speech but does not expose a rate control through
+        // the Workers AI binding. Apply a pitch-preserving 0.85× pace here so the
+        // audience has time to absorb the narration; subtitle timing is generated
+        // only after this processed file has been measured.
+        const narrationSpeed = 0.85;
+        await new Promise((resolve, reject) => {
+            const paceAudio = spawn('ffmpeg', [
+                '-y', '-i', tmpVoice,
+                '-filter:a', `atempo=${narrationSpeed}`,
+                '-c:a', 'libmp3lame', '-b:a', '128k',
+                tmpPacedVoice
+            ]);
+            let paceError = '';
+            paceAudio.stderr.on('data', data => { paceError += data.toString(); });
+            paceAudio.on('close', code => code === 0
+                ? resolve()
+                : reject(new Error(`Narration pacing failed: ${paceError.slice(-300)}`)));
+            paceAudio.on('error', reject);
+        });
+        if (!fs.existsSync(tmpPacedVoice) || fs.statSync(tmpPacedVoice).size < 1000) {
+            throw new Error('Paced narration output was empty');
+        }
+
+        // Measure exact paced voiceover duration, then generate deterministic timed
+        // ASS subtitle groups from the completed script.
         const voiceData = await new Promise((resolve) => {
-            const probe = spawn('ffprobe', ['-v', 'quiet', '-show_format', '-print_format', 'json', tmpVoice]);
+            const probe = spawn('ffprobe', ['-v', 'quiet', '-show_format', '-print_format', 'json', tmpPacedVoice]);
             let out = '';
             probe.stdout.on('data', d => out += d.toString());
             probe.on('close', () => {
@@ -209,7 +233,7 @@ app.post('/render_documentary', async (req, res) => {
         });
         const totalDuration = voiceData;
         fs.writeFileSync(tmpAss, scriptToAss(script, totalDuration), 'utf8');
-        console.log(`[${timestamp}] Native voiceover ready. Exact duration: ${totalDuration.toFixed(1)}s`);
+        console.log(`[${timestamp}] Paced voiceover ready at ${narrationSpeed}×. Exact duration: ${totalDuration.toFixed(1)}s`);
 
         // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed).
         // A successful HTTP download is not enough: a missing R2 asset can still return an
@@ -267,15 +291,19 @@ app.post('/render_documentary', async (req, res) => {
         if (brollFiles.length > 0) {
             // Load each B-roll video input
             brollFiles.forEach(bf => ffmpegArgs.push('-stream_loop', '-1', '-i', bf));
-            ffmpegArgs.push('-i', tmpVoice);
+            ffmpegArgs.push('-i', tmpPacedVoice);
 
             const numClips = brollFiles.length;
             const clipDuration = totalDuration / numClips;
             let filterGraph = '';
 
-            // Scale and crop the B-roll clip into a lightweight 540x960 vertical render with high saturation
+            // Slow source footage to a more deliberate documentary pace. The voiceover
+            // and ASS timing remain untouched; looping keeps the visual layer long enough
+            // after slowdown to fill the narration without rushing through archive clips.
+            const visualSpeed = 0.85;
+            const visualSetpts = (1 / visualSpeed).toFixed(3);
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.12:contrast=1.05,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,setpts=${visualSetpts}*PTS,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // Use one verified clip for stability. The archive source files can carry
@@ -313,7 +341,7 @@ app.post('/render_documentary', async (req, res) => {
             ffmpegArgs.push(
                 '-f', 'lavfi',
                 '-i', `color=c=0x0d1b2a:s=720x1280:d=${totalDuration.toFixed(2)}`,
-                '-i', tmpVoice
+                '-i', tmpPacedVoice
             );
             let filterGraph = `[0:v]null[vbg];`;
             if (fs.existsSync(tmpAss)) {
@@ -378,6 +406,7 @@ app.post('/render_documentary', async (req, res) => {
 
     function cleanup() {
         try { if (fs.existsSync(tmpVoice)) fs.unlinkSync(tmpVoice); } catch(e) {}
+        try { if (fs.existsSync(tmpPacedVoice)) fs.unlinkSync(tmpPacedVoice); } catch(e) {}
         try { if (fs.existsSync(tmpVtt)) fs.unlinkSync(tmpVtt); } catch(e) {}
         try { if (fs.existsSync(tmpAss)) fs.unlinkSync(tmpAss); } catch(e) {}
         try { if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput); } catch(e) {}
