@@ -72,7 +72,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     const topic = customTopic.trim() || selectedTopic;
     if (!topic) return;
     setIsGenerating(true);
-    setProgress('Drafting a concise 60-second narrative');
+    setProgress('Drafting a concise 35–45 second narrative');
 
     const voiceTimer = window.setTimeout(() => setProgress('Preparing broadcast voice and timed captions'), 3000);
     const renderTimer = window.setTimeout(() => setProgress('Rendering a 9:16 original export'), 6500);

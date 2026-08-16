@@ -194,30 +194,15 @@ app.post('/render_documentary', async (req, res) => {
             throw new Error('Native audio response was empty');
         }
 
-        // Aura-1 produces natural speech but does not expose a rate control through
-        // the Workers AI binding. Apply a pitch-preserving 0.85× pace here so the
-        // audience has time to absorb the narration; subtitle timing is generated
-        // only after this processed file has been measured.
-        const narrationSpeed = 0.85;
-        await new Promise((resolve, reject) => {
-            const paceAudio = spawn('ffmpeg', [
-                '-y', '-i', tmpVoice,
-                '-filter:a', `atempo=${narrationSpeed}`,
-                '-c:a', 'libmp3lame', '-b:a', '128k',
-                tmpPacedVoice
-            ]);
-            let paceError = '';
-            paceAudio.stderr.on('data', data => { paceError += data.toString(); });
-            paceAudio.on('close', code => code === 0
-                ? resolve()
-                : reject(new Error(`Narration pacing failed: ${paceError.slice(-300)}`)));
-            paceAudio.on('error', reject);
-        });
+        // Keep Aura-2 narration at its native pace to preserve its natural prosody.
+        // The Worker now constrains the script to a short-form runtime budget, which
+        // avoids artificial time-stretching while still giving each sentence room.
+        fs.copyFileSync(tmpVoice, tmpPacedVoice);
         if (!fs.existsSync(tmpPacedVoice) || fs.statSync(tmpPacedVoice).size < 1000) {
-            throw new Error('Paced narration output was empty');
+            throw new Error('Narration copy was empty');
         }
 
-        // Measure exact paced voiceover duration, then generate deterministic timed
+        // Measure exact native voiceover duration, then generate deterministic timed
         // ASS subtitle groups from the completed script.
         const voiceData = await new Promise((resolve) => {
             const probe = spawn('ffprobe', ['-v', 'quiet', '-show_format', '-print_format', 'json', tmpPacedVoice]);
@@ -233,7 +218,7 @@ app.post('/render_documentary', async (req, res) => {
         });
         const totalDuration = voiceData;
         fs.writeFileSync(tmpAss, scriptToAss(script, totalDuration), 'utf8');
-        console.log(`[${timestamp}] Paced voiceover ready at ${narrationSpeed}×. Exact duration: ${totalDuration.toFixed(1)}s`);
+        console.log(`[${timestamp}] Native-speed voiceover ready. Exact duration: ${totalDuration.toFixed(1)}s`);
 
         // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed).
         // A successful HTTP download is not enough: a missing R2 asset can still return an
@@ -297,13 +282,10 @@ app.post('/render_documentary', async (req, res) => {
             const clipDuration = totalDuration / numClips;
             let filterGraph = '';
 
-            // Slow source footage to a more deliberate documentary pace. The voiceover
-            // and ASS timing remain untouched; looping keeps the visual layer long enough
-            // after slowdown to fill the narration without rushing through archive clips.
-            const visualSpeed = 0.85;
-            const visualSetpts = (1 / visualSpeed).toFixed(3);
+            // Preserve native visual movement. The shorter documentary script keeps
+            // the full production easy to follow without adding artificial slow motion.
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,setpts=${visualSetpts}*PTS,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // Use one verified clip for stability. The archive source files can carry

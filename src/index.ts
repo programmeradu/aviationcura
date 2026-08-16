@@ -21,6 +21,26 @@ export class ObfuscatorContainer extends Container {
     defaultPort = 3000;
 }
 
+function limitScriptToWordBudget(script: string, maximumWords = 105): string {
+	const normalized = script.replace(/\s+/g, ' ').trim();
+	const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [normalized];
+	const selected: string[] = [];
+	let usedWords = 0;
+
+	for (const sentence of sentences) {
+		const cleanSentence = sentence.trim();
+		const words = cleanSentence.split(/\s+/).filter(Boolean);
+		if (usedWords > 0 && usedWords + words.length > maximumWords) break;
+		if (usedWords === 0 && words.length > maximumWords) {
+			return words.slice(0, maximumWords).join(' ').replace(/[,:;\-]+$/, '') + '.';
+		}
+		selected.push(cleanSentence);
+		usedWords += words.length;
+	}
+
+	return selected.join(' ').trim() || normalized.split(/\s+/).slice(0, maximumWords).join(' ');
+}
+
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
 		// Curated High-Velocity Niche Matrix (Aviation, Deep Sea, Micro-Restoration, Cyprus, Tech, Luxury, Psychology, ASMR)
@@ -989,11 +1009,11 @@ CRITICAL RULES:
 
 				// Step 1: Workers AI crafts a viral 60-second narrative script + B-Roll queries
 				const systemPrompt = `You are a world-class documentary producer and aviation historian. 
-Write a riveting, factual 60-second short-form documentary script about: "${topic}".
+Write a riveting, factual 35-45 second short-form documentary script about: "${topic}".
 RULES:
 1. First sentence must be an immediate psychological pattern-interrupt hook (e.g. "At 35,000 feet, the pilots were completely frozen.").
 2. Narrative must build tension and explain what happened with 100% historical accuracy.
-3. Total spoken words: between 120 and 150 words (approx 50-65 seconds of speech).
+3. Total spoken words: between 90 and 105 words (approximately 35-45 seconds at a clear, natural documentary pace).
 4. Do NOT include stage directions, speaker labels, or bracketed notes. Output ONLY the raw spoken text.
 5. Provide 3 specific visual B-roll video search terms separated by commas on the very last line prefixed with "BROLL: "`;
 
@@ -1007,8 +1027,8 @@ RULES:
 				const aiText = ((aiRes as any).response || '').trim();
 				const brollMatch = aiText.match(/BROLL:\s*(.+)$/i);
 				let script = aiText.replace(/BROLL:\s*(.+)$/i, '').trim();
-				// Remove markdown asterisks or formatting
-				script = script.replace(/[*#]/g, '').trim();
+				// Remove markdown formatting and enforce the short-form runtime budget.
+				script = limitScriptToWordBudget(script.replace(/[*#]/g, '').trim());
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
