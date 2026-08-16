@@ -43,6 +43,10 @@ function limitScriptToWordBudget(script: string, maximumWords = 105): string {
 
 type ArchiveFootageRow = { videoId: string; title: string; keyword_used: string };
 
+// Verified from source preview: this archived B737 marshalling clip was mirrored
+// before upload, causing its embedded signage to read backward.
+const MIRRORED_ARCHIVE_VIDEO_IDS = new Set(['7XdVlgppKys']);
+
 const FOOTAGE_STOP_WORDS = new Set([
 	'the', 'and', 'for', 'with', 'from', 'this', 'that', 'into', 'over', 'about',
 	'what', 'when', 'where', 'after', 'before', 'their', 'your', 'they', 'were',
@@ -1116,9 +1120,10 @@ RULES:
 				).slice(0, 1);
 				const selectedFootage = contextualFootage.length > 0 ? contextualFootage : conservativeFallback;
 				console.log(`[Mini-Doc AI] Visual archive selection: ${selectedFootage.map((row) => `${row.videoId} (${row.score})`).join(', ') || 'clean fallback'}`);
-				const brollCandidates = selectedFootage.map((row) =>
-					new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString()
-				);
+				const brollCandidates = selectedFootage.map((row) => ({
+					url: new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString(),
+					hflip: MIRRORED_ARCHIVE_VIDEO_IDS.has(row.videoId)
+				}));
 
 				// Step 4: Call Container to render full 1080x1920 video with native voice & kinetic subtitles
 				if (!env.OBFUSCATOR) {

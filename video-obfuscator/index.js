@@ -225,7 +225,15 @@ app.post('/render_documentary', async (req, res) => {
         // HTML/JSON error page that happens to be larger than the old size threshold. Validate
         // each candidate with ffprobe before passing it to FFmpeg; the graphic fallback remains
         // reliable whenever the source library is unavailable.
-        const validUrls = Array.isArray(brollUrls) ? brollUrls.filter(u => typeof u === 'string' && u.startsWith('http')) : [];
+        // Preserve compatibility with legacy URL strings while accepting a per-asset
+        // hflip flag for archive clips that were previously ingested mirrored.
+        const validUrls = Array.isArray(brollUrls) ? brollUrls.map((source) => {
+            if (typeof source === 'string' && source.startsWith('http')) return { url: source, hflip: false };
+            if (source && typeof source.url === 'string' && source.url.startsWith('http')) {
+                return { url: source.url, hflip: source.hflip === true };
+            }
+            return null;
+        }).filter(Boolean) : [];
         const isPlayableVideo = (filePath) => new Promise((resolve) => {
             const probe = spawn('ffprobe', [
                 '-v', 'error',
@@ -245,19 +253,19 @@ app.post('/render_documentary', async (req, res) => {
         } else {
             const urlsToFetch = validUrls.slice(0, 2);
             console.log(`[${timestamp}] Downloading ${urlsToFetch.length} B-roll video assets in parallel...`);
-            await Promise.all(urlsToFetch.map((url, i) => new Promise((resolve) => {
+            await Promise.all(urlsToFetch.map((source, i) => new Promise((resolve) => {
                 const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
                 const curl = spawn('curl', [
                     '-fsSL', '--connect-timeout', '8', '--max-time', '20',
-                    '-A', 'Mozilla/5.0', '-o', brollPath, url
+                    '-A', 'Mozilla/5.0', '-o', brollPath, source.url
                 ]);
                 curl.on('close', async (code) => {
                     const playable = code === 0 && fs.existsSync(brollPath) &&
                         fs.statSync(brollPath).size > 10000 && await isPlayableVideo(brollPath);
                     if (playable) {
-                        brollFiles.push(brollPath);
+                        brollFiles.push({ path: brollPath, hflip: source.hflip });
                     } else {
-                        console.warn(`[${timestamp}] Ignoring unavailable or invalid B-roll source: ${url}`);
+                        console.warn(`[${timestamp}] Ignoring unavailable or invalid B-roll source: ${source.url}`);
                         try { if (fs.existsSync(brollPath)) fs.unlinkSync(brollPath); } catch (e) {}
                     }
                     resolve();
@@ -275,7 +283,7 @@ app.post('/render_documentary', async (req, res) => {
 
         if (brollFiles.length > 0) {
             // Load each B-roll video input
-            brollFiles.forEach(bf => ffmpegArgs.push('-stream_loop', '-1', '-i', bf));
+            brollFiles.forEach(({ path: brollPath }) => ffmpegArgs.push('-stream_loop', '-1', '-i', brollPath));
             ffmpegArgs.push('-i', tmpPacedVoice);
 
             const numClips = brollFiles.length;
@@ -285,7 +293,8 @@ app.post('/render_documentary', async (req, res) => {
             // Preserve native visual movement. The shorter documentary script keeps
             // the full production easy to follow without adding artificial slow motion.
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                const orientationFilter = brollFiles[i].hflip ? 'hflip,' : '';
+                filterGraph += `[${i}:v]${orientationFilter}scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1,fps=24,format=yuv420p,eq=saturation=1.08:contrast=1.03,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // All clips are normalized before concat, allowing a short, deliberate
@@ -392,8 +401,8 @@ app.post('/render_documentary', async (req, res) => {
         try { if (fs.existsSync(tmpVtt)) fs.unlinkSync(tmpVtt); } catch(e) {}
         try { if (fs.existsSync(tmpAss)) fs.unlinkSync(tmpAss); } catch(e) {}
         try { if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput); } catch(e) {}
-        brollFiles.forEach(f => {
-            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch(e) {}
+        brollFiles.forEach(({ path: brollPath }) => {
+            try { if (fs.existsSync(brollPath)) fs.unlinkSync(brollPath); } catch(e) {}
         });
     }
 });
