@@ -195,12 +195,12 @@ app.post('/render_documentary', async (req, res) => {
                 filterGraph += `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
-            // Concatenate all B-roll clips seamlessly
-            filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
-
-            // Use standard subtitles filter with explicit path
+            // Burn kinetic subtitles if available, otherwise pass clean video
+            let subtitleFilter = '';
             if (fs.existsSync(tmpAss)) {
-                filterGraph += `[vconcat]subtitles='${tmpAss}'[vfinal]`;
+                // Escape single quotes and colons for ffmpeg filter string
+                const safeAss = tmpAss.replace(/'/g, "\\'").replace(/:/g, '\\:');
+                filterGraph += `[vconcat]ass='${safeAss}'[vfinal]`;
             } else {
                 filterGraph += `[vconcat]null[vfinal]`;
             }
@@ -211,8 +211,8 @@ app.post('/render_documentary', async (req, res) => {
                 '-map', `${numClips}:a`, // Voice audio
                 '-t', totalDuration.toFixed(2),
                 '-c:v', 'libx264',
-                '-preset', 'veryfast',
-                '-crf', '18',
+                '-preset', 'ultrafast',
+                '-crf', '22',
                 '-c:a', 'aac',
                 '-b:a', '192k',
                 '-pix_fmt', 'yuv420p',
@@ -222,12 +222,13 @@ app.post('/render_documentary', async (req, res) => {
             // Fallback to solid canvas if zero B-roll clips downloaded
             ffmpegArgs.push(
                 '-f', 'lavfi',
-                '-i', `color=c=0x0a192f:s=1080x1920:d=${totalDuration.toFixed(2)}`,
+                '-i', `color=c=0x0d1b2a:s=1080x1920:d=${totalDuration.toFixed(2)}`,
                 '-i', tmpVoice
             );
             let filterGraph = `[0:v]null[vbg];`;
             if (fs.existsSync(tmpAss)) {
-                filterGraph += `[vbg]subtitles='${tmpAss}'[vfinal]`;
+                const safeAss = tmpAss.replace(/'/g, "\\'").replace(/:/g, '\\:');
+                filterGraph += `[vbg]ass='${safeAss}'[vfinal]`;
             } else {
                 filterGraph += `[vbg]null[vfinal]`;
             }
@@ -237,8 +238,8 @@ app.post('/render_documentary', async (req, res) => {
                 '-map', '1:a',
                 '-t', totalDuration.toFixed(2),
                 '-c:v', 'libx264',
-                '-preset', 'veryfast',
-                '-crf', '18',
+                '-preset', 'ultrafast',
+                '-crf', '22',
                 '-c:a', 'aac',
                 '-b:a', '192k',
                 '-pix_fmt', 'yuv420p',
