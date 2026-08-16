@@ -93,10 +93,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 // another external request in the container path.
 function scriptToAss(script, totalDuration) {
     const words = script.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
-    const groupSize = 7;
+    const groupSize = 5;
     const groups = [];
-    for (let i = 0; i < words.length; i += groupSize) groups.push(words.slice(i, i + groupSize).join(' '));
-    const durationPerGroup = totalDuration / Math.max(groups.length, 1);
+    for (let i = 0; i < words.length; i += groupSize) {
+        const groupWords = words.slice(i, i + groupSize);
+        groups.push({
+            text: groupWords.join(' '),
+            weight: groupWords.reduce((sum, word) => sum + Math.max(1, word.replace(/[^A-Za-z0-9]/g, '').length), 0) +
+                (/[.!?,;:]$/.test(groupWords[groupWords.length - 1]) ? 4 : 0)
+        });
+    }
+    const totalWeight = groups.reduce((sum, group) => sum + group.weight, 0) || 1;
     let ass = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -110,11 +117,15 @@ Style: Default,Arial,68,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
+    let cursor = 0;
     groups.forEach((group, index) => {
-        const start = index * durationPerGroup;
-        const end = Math.min(totalDuration, (index + 1) * durationPerGroup);
-        const text = group.toUpperCase().replace(/[{}]/g, '');
-        ass += `Dialogue: 0,${formatSecondsForAss(start)},${formatSecondsForAss(end)},Default,,0,0,0,,{\\c&H00FFFF&}${text}{\\c&HFFFFFF&}\n`;
+        const start = cursor;
+        const end = index === groups.length - 1
+            ? totalDuration
+            : Math.min(totalDuration, cursor + (totalDuration * group.weight / totalWeight));
+        const text = group.text.toUpperCase().replace(/[{}]/g, '');
+        ass += `Dialogue: 0,${formatSecondsForAss(start)},${formatSecondsForAss(end)},Default,,0,0,0,,{\\c&H00FFFF&}${text}{\\c&HFFFFFF&}\\n`;
+        cursor = end;
     });
     return ass;
 }
