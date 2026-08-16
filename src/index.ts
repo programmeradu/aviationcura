@@ -686,7 +686,7 @@ CRITICAL RULES:
 			try {
 				const body = await request.json() as any;
 				const videoId = body.videoId;
-				const caption = body.caption || "Watch this amazing video! #viral #fyp";
+				let caption = body.caption;
 				if (!videoId) return new Response(JSON.stringify({ error: "Missing videoId" }), { status: 400 });
 
 				const publicWorkerUrl = "https://aviation-curator.samueladu1970.workers.dev";
@@ -697,14 +697,35 @@ CRITICAL RULES:
 				if (!r2Obj) {
 					// Check if it is a queued TikTok video in tiktok_queue
 					const queueItem = await env.DB.prepare(
-						`SELECT play_url, title FROM tiktok_queue WHERE id = ?`
+						`SELECT play_url, title, author, niche FROM tiktok_queue WHERE id = ?`
 					).bind(videoId).first() as any;
 
 					if (queueItem && queueItem.play_url) {
 						// Stream through proxy so TikTok's server receives a valid clean URL
 						directVideoUrl = `${publicWorkerUrl}/api/stream-proxy?url=${encodeURIComponent(queueItem.play_url)}`;
+						
+						// If caption was not manually edited (equals raw title or empty), run Workers AI to generate 3rd person caption
+						if (!caption || caption === queueItem.title) {
+							try {
+								const cleanTitle = (queueItem.title || '').replace(/[#@][\w-]+/g, '').trim();
+								const authorTag = queueItem.author ? `@${queueItem.author}` : '';
+								const prompt = `Video Title: "${queueItem.title}"\nSubject: "${cleanTitle}"\nOriginal Creator Handle: "${authorTag}"\nCategory: "${queueItem.niche || 'aviation'}"\n\nTask: Write a clean 2-line curator caption for TikTok in 3rd-person POV. Never use "I" or "my". Credit author via @handle.`;
+								const systemMessage = `You are a professional social media curator editor. ALWAYS write in 3rd-person. Max 150 chars. Include 1 question + 🎥: @creator + 2-3 hashtags (#uktiktok #aviation #fyp).`;
+								
+								const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+									messages: [
+										{ role: 'system', content: systemMessage },
+										{ role: 'user', content: prompt }
+									]
+								});
+								const generated = (aiRes as any).response?.trim();
+								if (generated) caption = generated;
+							} catch (e) {}
+						}
 					}
 				}
+
+				if (!caption) caption = "Watch this incredible video! Rate this 1-10 🚀 #aviation #uktiktok #fyp";
 
 				const zernioApiKey = env.ZERNIO_API_KEY || "sk_e3b92c869e26159068d93c7da38c251af58211ee52b55bea92e22dc1af7d19ad";
 
