@@ -23,7 +23,7 @@ export class ObfuscatorContainer extends Container {
 
 export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 	async run(event: WorkflowEvent<any>, step: WorkflowStep) {
-		// Curated High-Velocity Niche Matrix (Aviation, Deep Sea Extreme/Offshore, Micro-Restoration)
+		// Curated High-Velocity Niche Matrix (Aviation, Deep Sea, Micro-Restoration, Cyprus, Tech, Luxury, Psychology, ASMR)
 		const trendingNiches = [
 			{
 				niche: 'aviation',
@@ -39,6 +39,36 @@ export class AviationCuratorWorkflow extends WorkflowEntrypoint<Env, any> {
 				niche: 'micro_restoration',
 				query: 'rusty tool laser cleaning antique watchmaker restoration',
 				ytQueries: ['high power laser rust removal satisfying', 'patek philippe restoration microscopic clockmaker', 'rusty antique machine complete restoration', 'vintage timepiece repair micro mechanical']
+			},
+			{
+				niche: 'cyprus_tourism',
+				query: 'cyprus travel ayia napa beaches 4k',
+				ytQueries: ['cyprus beaches 4k', 'ayia napa drone 4k', 'cyprus crystal clear water']
+			},
+			{
+				niche: 'cyprus_lifestyle',
+				query: 'cyprus luxury villas beaches',
+				ytQueries: ['cyprus luxury hotel', 'cyprus coastal villa', 'paphos luxury resorts']
+			},
+			{
+				niche: 'tech_gadgets',
+				query: 'cool amazon finds tech gadgets',
+				ytQueries: ['coolest amazon finds tech', 'smartphone unboxing ASMR', 'crazy japanese gadgets']
+			},
+			{
+				niche: 'oddly_satisfying',
+				query: 'oddly satisfying asmr factory machines',
+				ytQueries: ['kinetic sand cutting', 'soap carving ASMR', 'power washing porn', 'satisfying factory machines']
+			},
+			{
+				niche: 'dark_psychology',
+				query: 'psychological facts dark psychology',
+				ytQueries: ['dark psychology facts', 'body language tricks', 'human psychology hacks']
+			},
+			{
+				niche: 'luxury_lifestyle',
+				query: 'dubai supercars billionaire penthouses',
+				ytQueries: ['monaco billionaire lifestyle', 'superyacht tour', 'dubai luxury cars', 'billionaire penthouses']
 			}
 		];
 		const selectedCategory = trendingNiches[Math.floor(Math.random() * trendingNiches.length)];

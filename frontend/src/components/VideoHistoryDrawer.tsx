@@ -182,9 +182,15 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
             {/* Quick Niche Selector Pills */}
             <div className="flex flex-wrap gap-1.5 mb-2.5">
               {[
-                { id: 'aviation', name: '✈️ Aviation & Cockpit', query: 'cockpit crosswind landing aircraft carrier atc emergency' },
+                { id: 'aviation', name: '✈️ Aviation', query: 'cockpit crosswind landing aircraft carrier atc emergency' },
                 { id: 'deep_sea_extreme', name: '🌊 Deep Sea Extreme', query: 'deep sea saturation diver north sea oil rig rogue wave' },
-                { id: 'micro_restoration', name: '🔬 Micro-Restoration', query: 'rusty tool laser cleaning antique watchmaker restoration' }
+                { id: 'micro_restoration', name: '🔬 Micro-Restoration', query: 'rusty tool laser cleaning antique watchmaker restoration' },
+                { id: 'cyprus_tourism', name: '🏛️ Cyprus Tourism', query: 'cyprus travel ayia napa beaches 4k' },
+                { id: 'cyprus_lifestyle', name: '🏝️ Cyprus Lifestyle', query: 'cyprus luxury villas beaches' },
+                { id: 'tech_gadgets', name: '⚡ Tech Gadgets', query: 'cool amazon finds tech gadgets' },
+                { id: 'oddly_satisfying', name: '🧼 ASMR Satisfying', query: 'oddly satisfying asmr factory machines' },
+                { id: 'dark_psychology', name: '🧠 Psychology', query: 'psychological facts dark psychology' },
+                { id: 'luxury_lifestyle', name: '💎 Luxury Lifestyle', query: 'dubai supercars billionaire penthouses' }
               ].map((n) => (
                 <button
                   key={n.id}

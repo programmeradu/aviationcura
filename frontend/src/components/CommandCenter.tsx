@@ -20,9 +20,15 @@ interface CommandCenterProps {
 }
 
 const NICHES = [
-  { id: 'aviation', name: 'Aviation & Cockpit ATC', icon: '✈️' },
+  { id: 'aviation', name: 'Aviation & Cockpit', icon: '✈️' },
   { id: 'deep_sea_extreme', name: 'Deep Sea & Offshore Extreme', icon: '🌊' },
-  { id: 'micro_restoration', name: 'Laser & Micro-Restoration', icon: '🔬' }
+  { id: 'micro_restoration', name: 'Laser & Micro-Restoration', icon: '🔬' },
+  { id: 'cyprus_tourism', name: 'Cyprus Tourism', icon: '🏛️' },
+  { id: 'cyprus_lifestyle', name: 'Cyprus Lifestyle', icon: '🏝️' },
+  { id: 'tech_gadgets', name: 'Tech Gadgets & Amazon', icon: '⚡' },
+  { id: 'oddly_satisfying', name: 'Oddly Satisfying ASMR', icon: '🧼' },
+  { id: 'dark_psychology', name: 'Dark Psychology', icon: '🧠' },
+  { id: 'luxury_lifestyle', name: 'Luxury & Hypercars', icon: '💎' }
 ];
 
 export const CommandCenter: React.FC<CommandCenterProps> = ({
