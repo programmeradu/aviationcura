@@ -161,8 +161,26 @@ app.post('/render_documentary', async (req, res) => {
         const totalDuration = voiceData;
         console.log(`[${timestamp}] Voiceover generated. Exact duration: ${totalDuration.toFixed(1)}s`);
 
-        // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed)
+        // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed).
+        // A successful HTTP download is not enough: a missing R2 asset can still return an
+        // HTML/JSON error page that happens to be larger than the old size threshold. Validate
+        // each candidate with ffprobe before passing it to FFmpeg; the graphic fallback remains
+        // reliable whenever the source library is unavailable.
         const validUrls = Array.isArray(brollUrls) ? brollUrls.filter(u => typeof u === 'string' && u.startsWith('http')) : [];
+        const isPlayableVideo = (filePath) => new Promise((resolve) => {
+            const probe = spawn('ffprobe', [
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=codec_type',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                filePath
+            ]);
+            let output = '';
+            probe.stdout.on('data', d => output += d.toString());
+            probe.on('close', code => resolve(code === 0 && output.trim() === 'video'));
+            probe.on('error', () => resolve(false));
+        });
+
         if (validUrls.length === 0) {
             console.log(`[${timestamp}] No external B-roll provided, generating styled kinetic background...`);
         } else {
@@ -170,14 +188,27 @@ app.post('/render_documentary', async (req, res) => {
             console.log(`[${timestamp}] Downloading ${urlsToFetch.length} B-roll video assets in parallel...`);
             await Promise.all(urlsToFetch.map((url, i) => new Promise((resolve) => {
                 const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
-                const curl = spawn('curl', ['-sL', '--max-time', '20', '-A', 'Mozilla/5.0', '-o', brollPath, url]);
-                curl.on('close', () => {
-                    if (fs.existsSync(brollPath) && fs.statSync(brollPath).size > 10000) {
+                const curl = spawn('curl', [
+                    '-fsSL', '--connect-timeout', '8', '--max-time', '20',
+                    '-A', 'Mozilla/5.0', '-o', brollPath, url
+                ]);
+                curl.on('close', async (code) => {
+                    const playable = code === 0 && fs.existsSync(brollPath) &&
+                        fs.statSync(brollPath).size > 10000 && await isPlayableVideo(brollPath);
+                    if (playable) {
                         brollFiles.push(brollPath);
+                    } else {
+                        console.warn(`[${timestamp}] Ignoring unavailable or invalid B-roll source: ${url}`);
+                        try { if (fs.existsSync(brollPath)) fs.unlinkSync(brollPath); } catch (e) {}
                     }
                     resolve();
                 });
+                curl.on('error', () => resolve());
             })));
+        }
+
+        if (brollFiles.length === 0) {
+            console.log(`[${timestamp}] No playable B-roll clips found; using styled kinetic background fallback.`);
         }
 
         // Step 3: Construct Multi-Clip FFmpeg Filter Graph

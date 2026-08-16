@@ -384,7 +384,7 @@ CRITICAL RULES:
 		await step.do('save-to-d1', async () => {
 			await this.env.DB.prepare(
 				`INSERT INTO videos (videoId, title, keyword_used, humanized_caption, r2_url, status) VALUES (?, ?, ?, ?, ?, ?)`
-			).bind(selectedVideo.videoId, selectedVideo.title, keyword, caption, r2Key, 'published').run();
+			).bind(selectedVideo.videoId, selectedVideo.title, selectedVideo.niche || activeNiche, caption, r2Key, 'published').run();
 		});
 
 		// Step 7: Post to Telegram (if configured)
@@ -868,9 +868,10 @@ CRITICAL RULES:
 				range: request.headers,
 				onlyIf: request.headers,
 			});
-			if (!object) return new Response('Not found', { status: 404 });
-			
-			const headers = new Headers();
+				if (!object) return new Response('Not found', { status: 404 });
+				if (!('body' in object)) return new Response(null, { status: 304 });
+
+				const headers = new Headers();
 			object.writeHttpMetadata(headers);
 			headers.set('etag', object.httpEtag);
 			headers.set('Content-Type', 'video/mp4');
@@ -992,12 +993,15 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Fetch high-quality internal R2 video clips as B-roll candidates
-				const brollCandidates = [
-					'https://aviation-curator.samueladu1970.workers.dev/api/video/Te_5YCSG3cs',
-					'https://aviation-curator.samueladu1970.workers.dev/api/video/2BLtHGndubc',
-					'https://aviation-curator.samueladu1970.workers.dev/api/video/srXxiyfs4_8'
-				];
+				// Step 2: Select currently stored R2 videos for B-roll. The previous fixed
+				// IDs eventually pointed to expired or unavailable objects, which allowed
+				// error pages to reach the renderer as if they were MP4 files.
+				const { results: brollRows } = await env.DB.prepare(
+					`SELECT videoId FROM videos WHERE r2_url IS NOT NULL AND r2_url != '' ORDER BY rowid DESC LIMIT 3`
+				).all<{ videoId: string }>();
+				const brollCandidates = brollRows.map((row) =>
+					`https://aviation-curator.samueladu1970.workers.dev/api/video/${encodeURIComponent(row.videoId)}`
+				);
 
 				// Step 3: Call Container to render full 1080x1920 video with neural voice & kinetic subtitles
 				if (!env.OBFUSCATOR) {
