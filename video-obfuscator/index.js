@@ -198,11 +198,9 @@ app.post('/render_documentary', async (req, res) => {
             // Concatenate all B-roll clips seamlessly
             filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
 
-            // Burn kinetic subtitles if available
+            // Use standard subtitles filter with explicit path
             if (fs.existsSync(tmpAss)) {
-                // Escape Windows/Linux path for ffmpeg subtitles filter
-                const escapedAss = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
-                filterGraph += `[vconcat]ass='${escapedAss}'[vfinal]`;
+                filterGraph += `[vconcat]subtitles='${tmpAss}'[vfinal]`;
             } else {
                 filterGraph += `[vconcat]null[vfinal]`;
             }
@@ -221,16 +219,15 @@ app.post('/render_documentary', async (req, res) => {
                 tmpOutput
             );
         } else {
-            // Fallback to high-grade gradient background if zero B-roll clips downloaded
+            // Fallback to solid canvas if zero B-roll clips downloaded
             ffmpegArgs.push(
                 '-f', 'lavfi',
-                '-i', `gradients=s=1080x1920:c0=0x0a192f:c1=0x020c1b:d=${totalDuration.toFixed(2)}`,
+                '-i', `color=c=0x0a192f:s=1080x1920:d=${totalDuration.toFixed(2)}`,
                 '-i', tmpVoice
             );
-            let filterGraph = `[0:v]eq=saturation=1.2[vbg];`;
+            let filterGraph = `[0:v]null[vbg];`;
             if (fs.existsSync(tmpAss)) {
-                const escapedAss = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
-                filterGraph += `[vbg]ass='${escapedAss}'[vfinal]`;
+                filterGraph += `[vbg]subtitles='${tmpAss}'[vfinal]`;
             } else {
                 filterGraph += `[vbg]null[vfinal]`;
             }
@@ -250,8 +247,13 @@ app.post('/render_documentary', async (req, res) => {
         }
 
         console.log(`[${timestamp}] Launching FFmpeg Master Render Engine...`);
+        let ffmpegStderr = '';
         const ffmpeg = spawn('ffmpeg', ffmpegArgs);
-        ffmpeg.stderr.on('data', d => console.log(`[ffmpeg render]: ${d.toString().trim()}`));
+        ffmpeg.stderr.on('data', d => {
+            const str = d.toString();
+            ffmpegStderr += str;
+            console.log(`[ffmpeg render]: ${str.trim()}`);
+        });
 
         ffmpeg.on('close', (code) => {
             if (code === 0 && fs.existsSync(tmpOutput)) {
@@ -261,8 +263,8 @@ app.post('/render_documentary', async (req, res) => {
                     cleanup();
                 });
             } else {
-                console.error(`[${timestamp}] FFmpeg failed with code ${code}`);
-                res.status(500).send('FFmpeg documentary rendering failed');
+                console.error(`[${timestamp}] FFmpeg failed with code ${code}: ${ffmpegStderr.slice(-400)}`);
+                res.status(500).send(`FFmpeg failed (${code}): ${ffmpegStderr.slice(-300)}`);
                 cleanup();
             }
         });
