@@ -223,7 +223,7 @@ app.post('/render_documentary', async (req, res) => {
         if (validUrls.length === 0) {
             console.log(`[${timestamp}] No external B-roll provided, generating styled kinetic background...`);
         } else {
-            const urlsToFetch = validUrls.slice(0, 3);
+            const urlsToFetch = validUrls.slice(0, 1);
             console.log(`[${timestamp}] Downloading ${urlsToFetch.length} B-roll video assets in parallel...`);
             await Promise.all(urlsToFetch.map((url, i) => new Promise((resolve) => {
                 const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
@@ -267,8 +267,13 @@ app.post('/render_documentary', async (req, res) => {
                 filterGraph += `[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,format=yuv420p,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
-            // Concatenate all B-roll clips seamlessly
-            filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
+            // Use one verified clip for stability. The archive source files can carry
+            // incompatible metadata that makes multi-input concat fail even after crop.
+            if (numClips === 1) {
+                filterGraph += `[v0]null[vconcat];`;
+            } else {
+                filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
+            }
 
             // Burn kinetic subtitles if available, otherwise pass clean video
             if (fs.existsSync(tmpAss)) {
