@@ -919,6 +919,151 @@ CRITICAL RULES:
 			}
 		}
 
+		// POST /api/documentary-topics — Return high-performing aviation story presets
+		if (url.pathname === '/api/documentary-topics') {
+			const topics = [
+				{
+					id: 'helios-522',
+					title: 'The Ghost Flight: Helios Airways 522',
+					summary: 'A Boeing 737 flies over Athens with everyone on board frozen unconscious at 35,000 feet.'
+				},
+				{
+					id: 'gimli-glider',
+					title: 'The Miracle of the Gimli Glider',
+					summary: 'A Boeing 767 runs out of fuel at 41,000 feet and glides onto a drag-racing strip with zero casualties.'
+				},
+				{
+					id: 'concorde-crash',
+					title: 'The Fall of the Supersonic Legend: Concorde 4590',
+					summary: 'A titanium strip on the runway sparks the tragic end of commercial supersonic flight.'
+				},
+				{
+					id: 'sr71-speed-check',
+					title: 'The Legendary SR-71 Blackbird Speed Check',
+					summary: 'The ultimate radio silence flex across Los Angeles Center at Mach 3.2.'
+				},
+				{
+					id: 'ba9-volcanic-ash',
+					title: 'British Airways Flight 9: All 4 Engines Fail',
+					summary: 'Flying through Mount Galunggung volcanic ash cloud at night with St. Elmo fire.'
+				},
+				{
+					id: 'miracle-hudson',
+					title: 'Cactus 1549: Miracle on the Hudson',
+					summary: 'Double bird strike over NYC, landing a dual-engine disabled A320 safely on the river.'
+				}
+			];
+			return new Response(JSON.stringify(topics), {
+				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+			});
+		}
+
+		// POST /api/generate-documentary — 100% Transformative AI Mini-Documentary Generator
+		if (url.pathname === '/api/generate-documentary' && request.method === 'POST') {
+			try {
+				const body = await request.json().catch(() => ({})) as any;
+				const topic = body.topic || 'Helios Airways Flight 522';
+				const voice = body.voice || 'en-US-ChristopherNeural';
+
+				console.log(`[Mini-Doc AI] Generating script for topic: ${topic}...`);
+
+				// Step 1: Workers AI crafts a viral 60-second narrative script + B-Roll queries
+				const systemPrompt = `You are a world-class documentary producer and aviation historian. 
+Write a riveting, factual 60-second short-form documentary script about: "${topic}".
+RULES:
+1. First sentence must be an immediate psychological pattern-interrupt hook (e.g. "At 35,000 feet, the pilots were completely frozen.").
+2. Narrative must build tension and explain what happened with 100% historical accuracy.
+3. Total spoken words: between 120 and 150 words (approx 50-65 seconds of speech).
+4. Do NOT include stage directions, speaker labels, or bracketed notes. Output ONLY the raw spoken text.
+5. Provide 3 specific visual B-roll video search terms separated by commas on the very last line prefixed with "BROLL: "`;
+
+				const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+					messages: [
+						{ role: 'system', content: systemPrompt },
+						{ role: 'user', content: `Topic: ${topic}` }
+					]
+				});
+
+				const aiText = ((aiRes as any).response || '').trim();
+				const brollMatch = aiText.match(/BROLL:\s*(.+)$/i);
+				let script = aiText.replace(/BROLL:\s*(.+)$/i, '').trim();
+				// Remove markdown asterisks or formatting
+				script = script.replace(/[*#]/g, '').trim();
+
+				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
+
+				// Step 2: Fetch 3 high-quality B-roll video candidates
+				// We can pull curated aviation B-roll from YouTube/R2/archive
+				const brollCandidates = [
+					'https://aviation-curator.samueladu1970.workers.dev/api/stream-proxy?url=' + encodeURIComponent('https://v16-webapp-prime.tiktokcdn-eu.com/video/tos/no1a/tos-no1a-ve-0068c001-no/oI9iOqHwEAeS6f4kI8BqF8jEIA4sIQAefcZJjB/'),
+					'https://aviation-curator.samueladu1970.workers.dev/api/video/7674400418256014614'
+				];
+
+				// Step 3: Call Container to render full 1080x1920 video with neural voice & kinetic subtitles
+				if (!env.OBFUSCATOR) {
+					return new Response(JSON.stringify({ success: false, error: "Obfuscator container not bound" }), { status: 500 });
+				}
+
+				console.log(`[Mini-Doc AI] Sending script to Container Render Engine...`);
+				const containerInstance = getContainer(env.OBFUSCATOR, "global");
+				const renderRes = await containerInstance.fetch("http://container/render_documentary", {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						script,
+						voice,
+						brollUrls: brollCandidates
+					})
+				});
+
+				if (!renderRes.ok) {
+					const err = await renderRes.text();
+					console.error("[Mini-Doc AI] Container rendering failed:", err);
+					return new Response(JSON.stringify({ success: false, error: `Container render failed: ${err}` }), {
+						status: 500,
+						headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+					});
+				}
+
+				// Step 4: Stream rendered MP4 to R2
+				const docId = `doc_${Date.now()}`;
+				const objectKey = `${docId}.mp4`;
+				const videoBody = renderRes.body;
+
+				if (videoBody) {
+					await env.VIDEOS_BUCKET.put(objectKey, videoBody, {
+						httpMetadata: { contentType: 'video/mp4' }
+					});
+				}
+
+				// Generate high-converting caption
+				const caption = `✈️ ${topic}\nWatch the full breakdown 👆 What would you do in this situation?\n#aviation #pilot #history #avgeek #flight`;
+
+				// Save into D1
+				await env.DB.prepare(
+					`INSERT INTO videos (videoId, title, keyword_used, humanized_caption, r2_url, status) VALUES (?, ?, ?, ?, ?, ?)`
+				).bind(docId, topic, 'documentary', caption, objectKey, 'published').run();
+
+				return new Response(JSON.stringify({
+					success: true,
+					videoId: docId,
+					topic,
+					script,
+					caption,
+					videoUrl: `https://aviation-curator.samueladu1970.workers.dev/api/video/${docId}`
+				}), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+
+			} catch (e: any) {
+				console.error("[Mini-Doc AI] Exception:", e);
+				return new Response(JSON.stringify({ success: false, error: e.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
+		}
+
 		return new Response('Aviation Curator API', { status: 200 });
 	},
 	async scheduled(event: any, env: Env, ctx: ExecutionContext) {

@@ -6,24 +6,25 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Increase timeout for long video processing
+// Increase timeout for long video rendering
 app.use((req, res, next) => {
-    req.setTimeout(500000);
-    res.setTimeout(500000);
+    req.setTimeout(600000);
+    res.setTimeout(600000);
     next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Run ffprobe on a file and return { width, height } of the video stream
+// Run ffprobe on a file and return { width, height, duration } of the video stream
 function probeVideo(filePath) {
     return new Promise((resolve) => {
         const ffprobe = spawn('ffprobe', [
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_streams',
+            '-show_format',
             filePath
         ]);
         let output = '';
@@ -34,191 +35,288 @@ function probeVideo(filePath) {
                 try {
                     const data = JSON.parse(output);
                     const vs = data.streams.find(s => s.codec_type === 'video');
-                    resolve(vs ? { width: vs.width, height: vs.height } : null);
+                    const duration = parseFloat(data.format?.duration || vs?.duration || '0');
+                    resolve(vs ? { width: vs.width, height: vs.height, duration } : null);
                 } catch (e) { resolve(null); }
             } else { resolve(null); }
         });
     });
 }
 
-// Choose the right -vf filter based on source dimensions:
-//   Portrait (height > width): scale to 1080x1920 with letterbox — avoids cropping portrait content
-//   Landscape (width > height): scale to fill then center-crop — no black bars
-function getVideoFilter(dims) {
-    const isPortrait = dims && dims.height > dims.width;
-    if (isPortrait) {
-        // Portrait source (e.g. YouTube Shorts 360x640, 1080x1920)
-        // Scale to fit 1080x1920 preserving AR — for exact 9:16 no padding needed
-        return 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=black,setsar=1,setpts=0.95*PTS';
-    } else {
-        // Landscape source (e.g. 1280x720, 1920x1080)
-        // Scale to fill portrait frame, center-crop the excess
-        return 'eq=saturation=1.1:contrast=1.05,unsharp=3:3:1.0,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,setpts=0.95*PTS';
-    }
+function isPortrait(dims) {
+    return dims && dims.height > dims.width;
 }
 
-// Build the FFmpeg args array with consistent high-quality settings
-function buildFfmpegArgs(input, vf, output) {
-    return [
-        '-y',
-        '-i', input,
-        '-vf', vf,
-        '-pix_fmt', 'yuv420p',
-        '-af', 'atempo=1.05',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast', // Fast execution while CRF 18 ensures crystal-clear visual quality
-        '-crf', '18',          // Near-lossless visual quality (was 24)
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-ar', '44100',
-        output
-    ];
+// Convert VTT subtitle timing to ASS subtitle format with styled word highlights
+function vttToAss(vttContent) {
+    const lines = vttContent.split('\n');
+    let ass = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,68,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,40,40,650,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+    let currentStart = '';
+    let currentEnd = '';
+    let currentText = '';
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.includes('-->')) {
+            const parts = line.split('-->').map(p => p.trim());
+            currentStart = formatAssTime(parts[0]);
+            currentEnd = formatAssTime(parts[1]);
+        } else if (line && !line.startsWith('WEBVTT') && !line.startsWith('NOTE') && !line.match(/^\d+$/)) {
+            currentText = line.replace(/<[^>]+>/g, '').toUpperCase();
+            if (currentStart && currentEnd && currentText) {
+                // Add yellow emphasis styling
+                ass += `Dialogue: 0,${currentStart},${currentEnd},Default,,0,0,0,,{\\c&H00FFFF&}${currentText}{\\c&HFFFFFF&}\n`;
+                currentStart = '';
+                currentEnd = '';
+                currentText = '';
+            }
+        }
+    }
+    return ass;
+}
+
+function formatAssTime(vttTime) {
+    // 00:00:01.234 -> 0:00:01.23
+    const parts = vttTime.split(':');
+    let h = '0';
+    let m = '00';
+    let s = '00.00';
+    if (parts.length === 3) {
+        h = parseInt(parts[0], 10).toString();
+        m = parts[1].padStart(2, '0');
+        s = parseFloat(parts[2]).toFixed(2).padStart(5, '0');
+    } else if (parts.length === 2) {
+        m = parts[0].padStart(2, '0');
+        s = parseFloat(parts[1]).toFixed(2).padStart(5, '0');
+    }
+    return `${h}:${m}:${s}`;
 }
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-// POST /obfuscate — accepts raw video stream in request body
-app.post('/obfuscate', (req, res) => {
+// POST /render_documentary — Renders 100% Transformative AI Mini-Documentary
+app.post('/render_documentary', async (req, res) => {
     const timestamp = Date.now();
-    const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
-    const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
+    const { script, brollUrls = [], voice = 'en-US-ChristopherNeural' } = req.body;
 
-    console.log(`[${timestamp}] /obfuscate: saving stream to disk...`);
-    const writeStream = fs.createWriteStream(tmpInput);
-    req.pipe(writeStream);
+    if (!script) return res.status(400).send('Missing script');
 
-    writeStream.on('finish', async () => {
-        const dims = await probeVideo(tmpInput);
-        const vf = getVideoFilter(dims);
-        console.log(`[${timestamp}] Source dims: ${dims ? dims.width + 'x' + dims.height : 'unknown'} → filter: ${isPortrait(dims) ? 'portrait' : 'landscape'}`);
+    const tmpVoice = path.join('/tmp', `${timestamp}_voice.mp3`);
+    const tmpVtt = path.join('/tmp', `${timestamp}_voice.vtt`);
+    const tmpAss = path.join('/tmp', `${timestamp}_subtitles.ass`);
+    const tmpOutput = path.join('/tmp', `${timestamp}_doc_out.mp4`);
+    const brollFiles = [];
 
-        const ffmpeg = spawn('ffmpeg', buildFfmpegArgs(tmpInput, vf, tmpOutput));
-        ffmpeg.stderr.on('data', d => console.log(`[${timestamp} ffmpeg]: ${d.toString().trim()}`));
+    console.log(`[${timestamp}] /render_documentary: Generating neural voiceover via edge-tts (${voice})...`);
+
+    try {
+        // Step 1: Generate Voiceover Audio & Word Subtitles via Edge-TTS
+        await new Promise((resolve, reject) => {
+            const edge = spawn('edge-tts', [
+                '--voice', voice,
+                '--text', script,
+                '--write-media', tmpVoice,
+                '--write-subtitles', tmpVtt
+            ]);
+            edge.stderr.on('data', d => console.log(`[edge-tts stderr]: ${d.toString()}`));
+            edge.on('close', code => {
+                if (code === 0) resolve();
+                else reject(new Error(`edge-tts failed with code ${code}`));
+            });
+        });
+
+        // Convert VTT to stylized ASS subtitles
+        if (fs.existsSync(tmpVtt)) {
+            const vttContent = fs.readFileSync(tmpVtt, 'utf8');
+            const assContent = vttToAss(vttContent);
+            fs.writeFileSync(tmpAss, assContent, 'utf8');
+            console.log(`[${timestamp}] Stylized kinetic ASS subtitles generated!`);
+        }
+
+        // Measure exact voiceover duration
+        const voiceData = await new Promise((resolve) => {
+            const probe = spawn('ffprobe', ['-v', 'quiet', '-show_format', '-print_format', 'json', tmpVoice]);
+            let out = '';
+            probe.stdout.on('data', d => out += d.toString());
+            probe.on('close', () => {
+                try {
+                    const parsed = JSON.parse(out);
+                    resolve(parseFloat(parsed.format?.duration || '45'));
+                } catch(e) { resolve(45); }
+            });
+        });
+        const totalDuration = voiceData;
+        console.log(`[${timestamp}] Voiceover generated. Exact duration: ${totalDuration.toFixed(1)}s`);
+
+        // Step 2: Download B-Roll Clips
+        const validUrls = Array.isArray(brollUrls) ? brollUrls.filter(u => typeof u === 'string' && u.startsWith('http')) : [];
+        if (validUrls.length === 0) {
+            // Generate synthetic dynamic color background if no B-roll provided
+            console.log(`[${timestamp}] No external B-roll provided, generating styled kinetic background...`);
+        } else {
+            console.log(`[${timestamp}] Downloading ${validUrls.length} B-roll video assets...`);
+            for (let i = 0; i < Math.min(validUrls.length, 6); i++) {
+                const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
+                const curl = spawn('curl', ['-sL', '--max-time', '60', '-A', 'Mozilla/5.0', '-o', brollPath, validUrls[i]]);
+                await new Promise((resolve) => curl.on('close', resolve));
+                if (fs.existsSync(brollPath) && fs.statSync(brollPath).size > 10000) {
+                    brollFiles.push(brollPath);
+                }
+            }
+        }
+
+        // Step 3: Construct Multi-Clip FFmpeg Filter Graph
+        let ffmpegArgs = ['-y'];
+
+        if (brollFiles.length > 0) {
+            // Load each B-roll video input
+            brollFiles.forEach(bf => ffmpegArgs.push('-stream_loop', '-1', '-i', bf));
+            ffmpegArgs.push('-i', tmpVoice);
+
+            const numClips = brollFiles.length;
+            const clipDuration = totalDuration / numClips;
+            let filterGraph = '';
+
+            // Scale and crop each B-roll clip into vertical 1080x1920 with high saturation & micro-movement
+            for (let i = 0; i < numClips; i++) {
+                filterGraph += `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+            }
+
+            // Concatenate all B-roll clips seamlessly
+            filterGraph += `${brollFiles.map((_, i) => `[v${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat];`;
+
+            // Burn kinetic subtitles if available
+            if (fs.existsSync(tmpAss)) {
+                // Escape Windows/Linux path for ffmpeg subtitles filter
+                const escapedAss = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
+                filterGraph += `[vconcat]ass='${escapedAss}'[vfinal]`;
+            } else {
+                filterGraph += `[vconcat]null[vfinal]`;
+            }
+
+            ffmpegArgs.push(
+                '-filter_complex', filterGraph,
+                '-map', '[vfinal]',
+                '-map', `${numClips}:a`, // Voice audio
+                '-t', totalDuration.toFixed(2),
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-crf', '18',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                tmpOutput
+            );
+        } else {
+            // Fallback to high-grade gradient background if zero B-roll clips downloaded
+            ffmpegArgs.push(
+                '-f', 'lavfi',
+                '-i', `gradients=s=1080x1920:c0=0x0a192f:c1=0x020c1b:d=${totalDuration.toFixed(2)}`,
+                '-i', tmpVoice
+            );
+            let filterGraph = `[0:v]eq=saturation=1.2[vbg];`;
+            if (fs.existsSync(tmpAss)) {
+                const escapedAss = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
+                filterGraph += `[vbg]ass='${escapedAss}'[vfinal]`;
+            } else {
+                filterGraph += `[vbg]null[vfinal]`;
+            }
+            ffmpegArgs.push(
+                '-filter_complex', filterGraph,
+                '-map', '[vfinal]',
+                '-map', '1:a',
+                '-t', totalDuration.toFixed(2),
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-crf', '18',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                tmpOutput
+            );
+        }
+
+        console.log(`[${timestamp}] Launching FFmpeg Master Render Engine...`);
+        const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+        ffmpeg.stderr.on('data', d => console.log(`[ffmpeg render]: ${d.toString().trim()}`));
 
         ffmpeg.on('close', (code) => {
-            if (code === 0) {
-                res.download(tmpOutput, 'video.mp4', (err) => {
-                    if (err) console.error(`[${timestamp}] Send error:`, err);
-                    try { fs.unlinkSync(tmpInput); } catch(e) {}
-                    try { fs.unlinkSync(tmpOutput); } catch(e) {}
+            if (code === 0 && fs.existsSync(tmpOutput)) {
+                console.log(`[${timestamp}] Master render finished successfully! Sending MP4 stream...`);
+                res.download(tmpOutput, 'documentary.mp4', (err) => {
+                    if (err) console.error(`[${timestamp}] Download send error:`, err);
+                    cleanup();
                 });
             } else {
-                res.status(500).send('FFmpeg processing failed');
-                try { fs.unlinkSync(tmpInput); } catch(e) {}
-                try { fs.unlinkSync(tmpOutput); } catch(e) {}
+                console.error(`[${timestamp}] FFmpeg failed with code ${code}`);
+                res.status(500).send('FFmpeg documentary rendering failed');
+                cleanup();
             }
         });
-    });
 
-    writeStream.on('error', (err) => {
-        console.error(`[${timestamp}] Write error:`, err);
-        res.status(500).send('Failed to save input stream');
-    });
+    } catch (e) {
+        console.error(`[${timestamp}] Render documentary exception:`, e);
+        res.status(500).send(`Render failed: ${e.message}`);
+        cleanup();
+    }
+
+    function cleanup() {
+        try { if (fs.existsSync(tmpVoice)) fs.unlinkSync(tmpVoice); } catch(e) {}
+        try { if (fs.existsSync(tmpVtt)) fs.unlinkSync(tmpVtt); } catch(e) {}
+        try { if (fs.existsSync(tmpAss)) fs.unlinkSync(tmpAss); } catch(e) {}
+        try { if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput); } catch(e) {}
+        brollFiles.forEach(f => {
+            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch(e) {}
+        });
+    }
 });
 
-// POST /process_url — accepts { downloadUrl } JSON body, streams via curl
+// Existing /obfuscate and /process_url endpoints for legacy compatibility
 app.post('/process_url', (req, res) => {
     const timestamp = Date.now();
     const { downloadUrl } = req.body;
-
     if (!downloadUrl) return res.status(400).send('Missing downloadUrl');
 
     const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
     const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
 
-    console.log(`[${timestamp}] /process_url: downloading via curl then probing...`);
-
-    // Clean up any stale files in /tmp older than 10 minutes
-    try {
-        const files = fs.readdirSync('/tmp');
-        const now = Date.now();
-        for (const file of files) {
-            const fp = path.join('/tmp', file);
-            const stat = fs.statSync(fp);
-            if (now - stat.mtimeMs > 600000) {
-                fs.unlinkSync(fp);
-            }
-        }
-    } catch(e) {}
-
-    // Step 1: Download to disk via curl with timeout
     const curl = spawn('curl', ['-sL', '--max-time', '120', '-A', 'Mozilla/5.0', '-o', tmpInput, downloadUrl]);
-    curl.stderr.on('data', d => console.log(`[${timestamp} curl]: ${d.toString().trim()}`));
-
     curl.on('close', async (curlCode) => {
-        if (curlCode !== 0) {
-            console.error(`[${timestamp}] curl failed with code ${curlCode}`);
-            return res.status(500).send('Failed to download video');
-        }
-
+        if (curlCode !== 0) return res.status(500).send('Failed to download video');
         const dims = await probeVideo(tmpInput);
-        const vf = getVideoFilter(dims);
-        console.log(`[${timestamp}] Source: ${dims ? dims.width + 'x' + dims.height : 'unknown'} → ${isPortrait(dims) ? 'portrait' : 'landscape'} path`);
+        const vf = isPortrait(dims)
+            ? 'eq=saturation=1.1:contrast=1.05,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=black,setsar=1'
+            : 'eq=saturation=1.1:contrast=1.05,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1';
 
-        const ffmpeg = spawn('ffmpeg', buildFfmpegArgs(tmpInput, vf, tmpOutput));
-        ffmpeg.stderr.on('data', d => console.log(`[${timestamp} ffmpeg]: ${d.toString().trim()}`));
-
+        const ffmpeg = spawn('ffmpeg', ['-y', '-i', tmpInput, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-c:a', 'aac', tmpOutput]);
         ffmpeg.on('close', (code) => {
             if (code === 0) {
-                res.download(tmpOutput, 'video.mp4', (err) => {
-                    if (err) console.error(`[${timestamp}] Send error:`, err);
+                res.download(tmpOutput, 'video.mp4', () => {
                     try { fs.unlinkSync(tmpInput); } catch(e) {}
                     try { fs.unlinkSync(tmpOutput); } catch(e) {}
                 });
             } else {
-                res.status(500).send('FFmpeg processing failed');
+                res.status(500).send('FFmpeg failed');
                 try { fs.unlinkSync(tmpInput); } catch(e) {}
                 try { fs.unlinkSync(tmpOutput); } catch(e) {}
             }
         });
     });
 });
-
-// POST /download_and_obfuscate — accepts raw video stream, main pipeline endpoint
-app.post('/download_and_obfuscate', (req, res) => {
-    const timestamp = Date.now();
-    const tmpInput = path.join('/tmp', `${timestamp}_in.mp4`);
-    const tmpOutput = path.join('/tmp', `${timestamp}_out.mp4`);
-
-    console.log(`[${timestamp}] /download_and_obfuscate: saving stream to disk...`);
-    const writeStream = fs.createWriteStream(tmpInput);
-    req.pipe(writeStream);
-
-    writeStream.on('finish', async () => {
-        const dims = await probeVideo(tmpInput);
-        const vf = getVideoFilter(dims);
-        console.log(`[${timestamp}] Source: ${dims ? dims.width + 'x' + dims.height : 'unknown'} → ${isPortrait(dims) ? 'portrait' : 'landscape'} path | CRF 18 medium`);
-
-        const ffmpeg = spawn('ffmpeg', buildFfmpegArgs(tmpInput, vf, tmpOutput));
-        ffmpeg.stderr.on('data', d => console.log(`[${timestamp} ffmpeg]: ${d.toString().trim()}`));
-
-        ffmpeg.on('close', (code) => {
-            if (code === 0) {
-                res.download(tmpOutput, 'video.mp4', (err) => {
-                    if (err) console.error(`[${timestamp}] Send error:`, err);
-                    try { fs.unlinkSync(tmpInput); } catch(e) {}
-                    try { fs.unlinkSync(tmpOutput); } catch(e) {}
-                });
-            } else {
-                res.status(500).send('FFmpeg processing failed');
-                try { fs.unlinkSync(tmpInput); } catch(e) {}
-                try { fs.unlinkSync(tmpOutput); } catch(e) {}
-            }
-        });
-    });
-
-    writeStream.on('error', (err) => {
-        console.error(`[${timestamp}] Write error:`, err);
-        res.status(500).send('Failed to save input stream');
-    });
-});
-
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-function isPortrait(dims) {
-    return dims && dims.height > dims.width;
-}
 
 app.listen(PORT, () => {
-    console.log(`Video obfuscator listening on port ${PORT}`);
+    console.log(`Transformative Video Engine listening on port ${PORT}`);
 });

@@ -340,6 +340,7 @@ export function App() {
                   isTriggering={isTriggering}
                   captionText={captionText}
                   onChangeCaption={setCaptionText}
+                  onVideoGenerated={fetchVideos}
                 />
               </div>
 
