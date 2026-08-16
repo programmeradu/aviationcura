@@ -993,15 +993,12 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Select currently stored R2 videos for B-roll. The previous fixed
-				// IDs eventually pointed to expired or unavailable objects, which allowed
-				// error pages to reach the renderer as if they were MP4 files.
-				const { results: brollRows } = await env.DB.prepare(
-					`SELECT videoId FROM videos WHERE r2_url IS NOT NULL AND r2_url != '' ORDER BY rowid DESC LIMIT 3`
-				).all<{ videoId: string }>();
-				const brollCandidates = brollRows.map((row) =>
-					`https://aviation-curator.samueladu1970.workers.dev/api/video/${encodeURIComponent(row.videoId)}`
-				);
+				// Step 2: Use the renderer's fast styled-background path for now. The active
+				// container image still performs remote B-roll download and FFmpeg assembly in
+				// the synchronous request path, which exceeds the container deadline. Supplying
+				// an empty list produces the original narrated vertical render with kinetic
+				// subtitles, then reliably returns in time for R2/D1 persistence.
+				const brollCandidates: string[] = [];
 
 				// Step 3: Call Container to render full 1080x1920 video with neural voice & kinetic subtitles
 				if (!env.OBFUSCATOR) {
