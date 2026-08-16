@@ -543,18 +543,54 @@ export default {
 			});
 		}
 
-		// GET /api/queue — Fetch all mined TikTok clips waiting in backlog
+		// GET /api/queue — Fetch all mined TikTok clips with real-time verified publication status
 		if (url.pathname === '/api/queue') {
-			const { results } = await env.DB.prepare(
-				`SELECT id, title, play_url, author, views, likes, music_title, niche, used, created_at FROM tiktok_queue ORDER BY likes DESC LIMIT 100`
-			).all();
-			return new Response(JSON.stringify(results), {
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*',
-					'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+			try {
+				const { results: queueItems } = await env.DB.prepare(
+					`SELECT id, title, play_url, author, views, likes, music_title, niche, used, created_at FROM tiktok_queue ORDER BY likes DESC LIMIT 100`
+				).all();
+
+				// Fetch published posts directly from Zernio for source-of-truth accuracy
+				const zernioApiKey = env.ZERNIO_API_KEY || "sk_e3b92c869e26159068d93c7da38c251af58211ee52b55bea92e22dc1af7d19ad";
+				const zernioRes = await fetch("https://zernio.com/api/v1/posts", {
+					headers: { "Authorization": `Bearer ${zernioApiKey}` }
+				});
+
+				const publishedVideoIds = new Set<string>();
+				if (zernioRes.ok) {
+					const zData = await zernioRes.json() as any;
+					const posts = zData.posts || [];
+					for (const p of posts) {
+						if (p.status === 'published' || p.status === 'publishing') {
+							const mediaUrl = p.mediaItems?.[0]?.url || '';
+							// Check if mediaUrl matches queue ID directly or through stream-proxy
+							for (const item of (queueItems as any[])) {
+								if (mediaUrl.includes(item.id) || (item.play_url && mediaUrl.includes(encodeURIComponent(item.play_url)))) {
+									publishedVideoIds.add(item.id);
+								}
+							}
+						}
+					}
 				}
-			});
+
+				const validatedQueue = (queueItems as any[]).map(item => ({
+					...item,
+					used: publishedVideoIds.has(item.id) ? 1 : 0
+				}));
+
+				return new Response(JSON.stringify(validatedQueue), {
+					headers: {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*',
+						'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+					}
+				});
+			} catch (e: any) {
+				return new Response(JSON.stringify({ error: e.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
 		}
 
 		// POST /api/batch-mine-tiktok — Pull a custom batch (e.g. 10, 20, 30) of fresh viral clips from TikTok Scraper
