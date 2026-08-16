@@ -1029,12 +1029,25 @@ RULES:
 				});
 				const nativeAudioUrl = new URL(`/api/tts/${encodeURIComponent(nativeAudioKey)}`, request.url).toString();
 
-				// Step 3: Use the renderer's fast styled-background path for now. The active
-				// container image still performs remote B-roll download and FFmpeg assembly in
-				// the synchronous request path, which exceeds the container deadline. Supplying
-				// an empty list produces the original narrated vertical render with kinetic
-				// subtitles, then reliably returns in time for R2/D1 persistence.
-				const brollCandidates: string[] = [];
+				// Step 3: Select real archived R2 footage for the visual layer. Earlier
+				// releases used an empty list, which intentionally produced a caption-only
+				// background. Prefer aviation/flight archive items and exclude documentary
+				// outputs, which may themselves be styled-background renders.
+				const { results: archiveRows } = await env.DB.prepare(
+					`SELECT videoId, title, keyword_used FROM videos
+					 WHERE status = 'published' AND r2_url IS NOT NULL AND r2_url != ''
+					   AND keyword_used != 'documentary'
+					 ORDER BY
+					   CASE WHEN lower(keyword_used) LIKE '%aviation%'
+					          OR lower(keyword_used) LIKE '%flight%'
+					          OR lower(keyword_used) LIKE '%landing%'
+					          OR lower(title) LIKE '%aircraft%'
+					        THEN 0 ELSE 1 END,
+					   rowid DESC LIMIT 2`
+				).all<{ videoId: string }>();
+				const brollCandidates = archiveRows.map((row) =>
+					new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString()
+				);
 
 				// Step 4: Call Container to render full 1080x1920 video with native voice & kinetic subtitles
 				if (!env.OBFUSCATOR) {
