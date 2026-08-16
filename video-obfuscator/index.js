@@ -124,7 +124,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ? totalDuration
             : Math.min(totalDuration, cursor + (totalDuration * group.weight / totalWeight));
         const text = group.text.toUpperCase().replace(/[{}]/g, '');
-        ass += `Dialogue: 0,${formatSecondsForAss(start)},${formatSecondsForAss(end)},Default,,0,0,0,,{\\c&H00FFFF&}${text}{\\c&HFFFFFF&}\\n`;
+        ass += `Dialogue: 0,${formatSecondsForAss(start)},${formatSecondsForAss(end)},Default,,0,0,0,,{\\c&H00FFFF&}${text}{\\c&HFFFFFF&}\n`;
         cursor = end;
     });
     return ass;
