@@ -179,12 +179,33 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
               <span className="text-[10px] text-neutral-500 font-mono">Quota-Guard Active</span>
             </div>
 
+            {/* Quick Niche Selector Pills */}
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              {[
+                { id: 'aviation', name: '✈️ Aviation & Cockpit', query: 'cockpit crosswind landing aircraft carrier atc emergency' },
+                { id: 'deep_sea_extreme', name: '🌊 Deep Sea Extreme', query: 'deep sea saturation diver north sea oil rig rogue wave' },
+                { id: 'micro_restoration', name: '🔬 Micro-Restoration', query: 'rusty tool laser cleaning antique watchmaker restoration' }
+              ].map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => setMineQuery(n.query)}
+                  className={`px-2 py-1 text-[10px] font-mono rounded border transition cursor-pointer ${
+                    mineQuery === n.query
+                      ? 'bg-amber-400 text-black font-bold border-amber-300'
+                      : 'bg-[#181818] text-neutral-300 border-[#27272a] hover:border-neutral-400'
+                  }`}
+                >
+                  {n.name}
+                </button>
+              ))}
+            </div>
+
             <div className="flex items-center space-x-2">
               <input
                 type="text"
                 value={mineQuery}
                 onChange={(e) => setMineQuery(e.target.value)}
-                placeholder="niche (aviation, asmr)"
+                placeholder="search keyword..."
                 className="flex-1 px-2 py-1 text-xs bg-[#090909] border border-[#27272a] rounded text-white font-mono focus:outline-none focus:border-neutral-400"
               />
               <select
