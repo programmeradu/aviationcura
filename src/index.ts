@@ -652,6 +652,17 @@ export default {
 					} catch (e) {}
 				}
 
+				return new Response(JSON.stringify({ success: true, countRetrieved: videos.length, insertedCount }), {
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ success: false, error: err.message }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				});
+			}
+		}
+
 		// POST /api/generate-caption — Generate 3rd-person curator caption with Workers AI on demand
 		if (url.pathname === '/api/generate-caption' && request.method === 'POST') {
 			try {
