@@ -200,9 +200,8 @@ app.post('/render_documentary', async (req, res) => {
 
             // Burn kinetic subtitles if available, otherwise pass clean video
             if (fs.existsSync(tmpAss)) {
-                // Escape single quotes and colons for ffmpeg filter string
-                const safeAss = tmpAss.replace(/'/g, "\\'").replace(/:/g, '\\:');
-                filterGraph += `[vconcat]ass='${safeAss}'[vfinal]`;
+                const escapedPath = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
+                filterGraph += `[vconcat]subtitles=filename='${escapedPath}'[vfinal]`;
             } else {
                 filterGraph += `[vconcat]null[vfinal]`;
             }
