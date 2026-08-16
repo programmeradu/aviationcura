@@ -992,11 +992,11 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Fetch 3 high-quality B-roll video candidates
-				// We can pull curated aviation B-roll from YouTube/R2/archive
+				// Step 2: Fetch high-quality internal R2 video clips as B-roll candidates
 				const brollCandidates = [
-					'https://aviation-curator.samueladu1970.workers.dev/api/stream-proxy?url=' + encodeURIComponent('https://v16-webapp-prime.tiktokcdn-eu.com/video/tos/no1a/tos-no1a-ve-0068c001-no/oI9iOqHwEAeS6f4kI8BqF8jEIA4sIQAefcZJjB/'),
-					'https://aviation-curator.samueladu1970.workers.dev/api/video/7674400418256014614'
+					'https://aviation-curator.samueladu1970.workers.dev/api/video/Te_5YCSG3cs',
+					'https://aviation-curator.samueladu1970.workers.dev/api/video/2BLtHGndubc',
+					'https://aviation-curator.samueladu1970.workers.dev/api/video/srXxiyfs4_8'
 				];
 
 				// Step 3: Call Container to render full 1080x1920 video with neural voice & kinetic subtitles
