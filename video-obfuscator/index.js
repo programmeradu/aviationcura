@@ -161,21 +161,23 @@ app.post('/render_documentary', async (req, res) => {
         const totalDuration = voiceData;
         console.log(`[${timestamp}] Voiceover generated. Exact duration: ${totalDuration.toFixed(1)}s`);
 
-        // Step 2: Download B-Roll Clips
+        // Step 2: Download B-Roll Clips (Max 3 clips, downloaded in parallel for speed)
         const validUrls = Array.isArray(brollUrls) ? brollUrls.filter(u => typeof u === 'string' && u.startsWith('http')) : [];
         if (validUrls.length === 0) {
-            // Generate synthetic dynamic color background if no B-roll provided
             console.log(`[${timestamp}] No external B-roll provided, generating styled kinetic background...`);
         } else {
-            console.log(`[${timestamp}] Downloading ${validUrls.length} B-roll video assets...`);
-            for (let i = 0; i < Math.min(validUrls.length, 6); i++) {
+            const urlsToFetch = validUrls.slice(0, 3);
+            console.log(`[${timestamp}] Downloading ${urlsToFetch.length} B-roll video assets in parallel...`);
+            await Promise.all(urlsToFetch.map((url, i) => new Promise((resolve) => {
                 const brollPath = path.join('/tmp', `${timestamp}_broll_${i}.mp4`);
-                const curl = spawn('curl', ['-sL', '--max-time', '60', '-A', 'Mozilla/5.0', '-o', brollPath, validUrls[i]]);
-                await new Promise((resolve) => curl.on('close', resolve));
-                if (fs.existsSync(brollPath) && fs.statSync(brollPath).size > 10000) {
-                    brollFiles.push(brollPath);
-                }
-            }
+                const curl = spawn('curl', ['-sL', '--max-time', '20', '-A', 'Mozilla/5.0', '-o', brollPath, url]);
+                curl.on('close', () => {
+                    if (fs.existsSync(brollPath) && fs.statSync(brollPath).size > 10000) {
+                        brollFiles.push(brollPath);
+                    }
+                    resolve();
+                });
+            })));
         }
 
         // Step 3: Construct Multi-Clip FFmpeg Filter Graph
@@ -224,13 +226,13 @@ app.post('/render_documentary', async (req, res) => {
             // Fallback to solid canvas if zero B-roll clips downloaded
             ffmpegArgs.push(
                 '-f', 'lavfi',
-                '-i', `color=c=0x0d1b2a:s=1080x1920:d=${totalDuration.toFixed(2)}`,
+                '-i', `color=c=0x0d1b2a:s=720x1280:d=${totalDuration.toFixed(2)}`,
                 '-i', tmpVoice
             );
             let filterGraph = `[0:v]null[vbg];`;
             if (fs.existsSync(tmpAss)) {
-                const safeAss = tmpAss.replace(/'/g, "\\'").replace(/:/g, '\\:');
-                filterGraph += `[vbg]ass='${safeAss}'[vfinal]`;
+                const escapedPath = tmpAss.replace(/\\/g, '/').replace(/:/g, '\\:');
+                filterGraph += `[vbg]subtitles=filename='${escapedPath}'[vfinal]`;
             } else {
                 filterGraph += `[vbg]null[vfinal]`;
             }
@@ -241,9 +243,10 @@ app.post('/render_documentary', async (req, res) => {
                 '-t', totalDuration.toFixed(2),
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
-                '-crf', '22',
+                '-tune', 'fastdecode',
+                '-crf', '24',
                 '-c:a', 'aac',
-                '-b:a', '192k',
+                '-b:a', '128k',
                 '-pix_fmt', 'yuv420p',
                 tmpOutput
             );
@@ -260,9 +263,18 @@ app.post('/render_documentary', async (req, res) => {
 
         ffmpeg.on('close', (code) => {
             if (code === 0 && fs.existsSync(tmpOutput)) {
-                console.log(`[${timestamp}] Master render finished successfully! Sending MP4 stream...`);
-                res.download(tmpOutput, 'documentary.mp4', (err) => {
-                    if (err) console.error(`[${timestamp}] Download send error:`, err);
+                const fileSize = fs.statSync(tmpOutput).size;
+                console.log(`[${timestamp}] Master render finished (${(fileSize / (1024*1024)).toFixed(2)} MB)! Streaming response...`);
+                res.writeHead(200, {
+                    'Content-Type': 'video/mp4',
+                    'Content-Length': fileSize,
+                    'Content-Disposition': 'inline; filename="documentary.mp4"'
+                });
+                const stream = fs.createReadStream(tmpOutput);
+                stream.pipe(res);
+                stream.on('end', () => cleanup());
+                stream.on('error', (err) => {
+                    console.error(`[${timestamp}] Stream error:`, err);
                     cleanup();
                 });
             } else {
