@@ -264,7 +264,7 @@ app.post('/render_documentary', async (req, res) => {
 
             // Scale and crop each B-roll clip into vertical 720x1280 (HD vertical, fast render) with high saturation
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                filterGraph += `[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,format=yuv420p,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // Concatenate all B-roll clips seamlessly
