@@ -1,76 +1,85 @@
 import { useEffect, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clapperboard,
+  Clock3,
+  Eye,
+  PanelLeft,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react';
 import { Header } from './components/Header';
 import { VideoPlayer } from './components/VideoPlayer';
 import type { VideoData } from './components/VideoPlayer';
 import { CommandCenter } from './components/CommandCenter';
 import { VideoHistoryDrawer } from './components/VideoHistoryDrawer';
-import { Smartphone, Sliders, Database, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const FALLBACK_VIDEOS: VideoData[] = [
   {
     id: 'nDjEB58JswQ',
     url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    title: "Someone captured this insane drone stunt with a 3-second hover time! Mind blown! 🚀 What's your favorite drone trick? #DroneStunt #TechGadgets",
+    title: 'A close look at one of the most precise low-altitude drone manoeuvres captured this week.',
     channel: '808Tech Daily',
     likes: '24.8K',
     comments: '482',
-    shares: '1.2K'
+    shares: '1.2K',
   },
   {
     id: '87yEhExKQ2Q',
     url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    title: "Someone unboxed the brand new Space Black iPhone Air in a mesmerizing ASMR experience! 📱 Unwind and relax with me? #iPhoneAir #ASMR #TechUnboxing",
+    title: 'The passenger experience inside a contemporary wide-body cabin, from boarding to descent.',
     channel: 'Gio San Pedro',
     likes: '19.4K',
     comments: '319',
-    shares: '840'
+    shares: '840',
   },
   {
     id: 'Mhqz8Hf9wrk',
     url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    title: "Someone captured a person being convinced to give up $100 cash in under 2 minutes 🤑 Watch this mind-bending manipulation technique in action.",
+    title: 'Why a crosswind approach is one of the most demanding moments in commercial flight.',
     channel: 'Darkful Mind',
     likes: '35.1K',
     comments: '890',
-    shares: '4.5K'
-  }
+    shares: '4.5K',
+  },
 ];
+
+type MobilePanel = 'library' | 'preview' | 'release';
 
 export function App() {
   const [videos, setVideos] = useState<VideoData[]>([]);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isTriggering, setIsTriggering] = useState(false);
-  const [activeNiche, setActiveNiche] = useState('cyprus_tourism');
+  const [activeNiche, setActiveNiche] = useState('aviation');
   const [captionText, setCaptionText] = useState('');
-  const [mobileTab, setMobileTab] = useState<'preview' | 'controls' | 'history'>('preview');
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('preview');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activePlaylist, setActivePlaylist] = useState<VideoData[]>([]);
+  const [activePlaylistIndex, setActivePlaylistIndex] = useState(0);
 
-  // Fetch real videos from Cloudflare Worker D1 API
   const fetchVideos = async () => {
     setIsRefreshing(true);
     try {
       const response = await fetch(`/api/videos?t=${Date.now()}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const mapped: VideoData[] = data.map((item: any) => ({
-            id: item.videoId,
-            url: `/api/video/${item.videoId}`,
-            title: item.humanized_caption || item.title,
-            channel: item.keyword_used || 'curator_network',
-            likes: (Math.floor(Math.random() * 40) + 10) + '.' + Math.floor(Math.random() * 9) + 'K',
-            comments: Math.floor(Math.random() * 600) + 50,
-            shares: Math.floor(Math.random() * 300) + 20
-          }));
-          setVideos(mapped);
-          setCaptionText((prev) => prev || mapped[0]?.title || '');
-          return;
-        }
-      }
-      throw new Error('Using fallback sample data');
-    } catch (e) {
-      console.log('Using sample fallback dataset for preview:', e);
+      if (!response.ok) throw new Error('Video archive unavailable');
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) throw new Error('No stored exports');
+
+      const mapped: VideoData[] = data.map((item: any) => ({
+        id: item.videoId,
+        url: `/api/video/${item.videoId}`,
+        title: item.humanized_caption || item.title,
+        channel: item.keyword_used || 'aviationcura',
+        likes: item.likes || '—',
+        comments: item.comments || '—',
+        shares: item.shares || '—',
+      }));
+      setVideos(mapped);
+      setCaptionText((previous) => previous || mapped[0]?.title || '');
+    } catch (error) {
+      console.info('Displaying sample production assets:', error);
       setVideos(FALLBACK_VIDEOS);
       setCaptionText(FALLBACK_VIDEOS[0].title);
     } finally {
@@ -83,147 +92,117 @@ export function App() {
     fetchVideos();
   }, []);
 
-  const handleTriggerRun = async () => {
-    setIsTriggering(true);
-    try {
-      const res = await fetch('/api/trigger', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json() as any;
-        console.log('Workflow triggered:', data);
-        const instanceId = data.id;
-
-        if (instanceId) {
-          let attempts = 0;
-          const interval = setInterval(async () => {
-            attempts++;
-            try {
-              const statusRes = await fetch(`/api/workflow-status/${instanceId}?t=${Date.now()}`);
-              if (statusRes.ok) {
-                const statusData = await statusRes.json() as any;
-                console.log('Workflow status poll:', statusData);
-                if (statusData.status === 'complete' || statusData.status === 'errored' || statusData.status === 'terminated' || attempts > 120) {
-                  clearInterval(interval);
-                  await fetchVideos();
-                  setSelectedVideoIndex(0);
-                  setIsTriggering(false);
-                }
-              }
-            } catch (pollErr) {
-              console.error('Polling error:', pollErr);
-            }
-          }, 3000);
-        } else {
-          setTimeout(async () => {
-            await fetchVideos();
-            setIsTriggering(false);
-          }, 15000);
-        }
-      } else {
-        setIsTriggering(false);
-      }
-    } catch (err) {
-      console.error('Trigger failed:', err);
-      setTimeout(() => setIsTriggering(false), 3000);
-    }
-  };
-
-  // Unified list of all playable videos (Archive + Mined Queue)
-  const [activePlaylist, setActivePlaylist] = useState<VideoData[]>([]);
-  const [activePlaylistIndex, setActivePlaylistIndex] = useState<number>(0);
-
-  // Sync activePlaylist with videos initially
   useEffect(() => {
     if (videos.length > 0 && activePlaylist.length === 0) {
       setActivePlaylist(videos);
-      setActivePlaylistIndex(selectedVideoIndex);
+      setActivePlaylistIndex(0);
     }
-  }, [videos]);
+  }, [videos, activePlaylist.length]);
+
+  const handleTriggerRun = async () => {
+    setIsTriggering(true);
+    try {
+      const response = await fetch('/api/trigger', { method: 'POST' });
+      if (!response.ok) throw new Error('Pipeline trigger rejected');
+      const data = (await response.json()) as { id?: string };
+
+      if (!data.id) {
+        window.setTimeout(async () => {
+          await fetchVideos();
+          setIsTriggering(false);
+        }, 15000);
+        return;
+      }
+
+      let attempts = 0;
+      const poll = window.setInterval(async () => {
+        attempts += 1;
+        try {
+          const statusResponse = await fetch(`/api/workflow-status/${data.id}?t=${Date.now()}`);
+          if (!statusResponse.ok) return;
+          const status = await statusResponse.json() as { status?: string };
+          const complete = ['complete', 'errored', 'terminated'].includes(status.status || '');
+          if (complete || attempts > 120) {
+            window.clearInterval(poll);
+            await fetchVideos();
+            setSelectedVideoIndex(0);
+            setIsTriggering(false);
+          }
+        } catch (pollError) {
+          console.warn('Workflow status unavailable:', pollError);
+        }
+      }, 3000);
+    } catch (error) {
+      console.error('Pipeline trigger failed:', error);
+      window.setTimeout(() => setIsTriggering(false), 2000);
+    }
+  };
 
   const currentVideo = activePlaylist[activePlaylistIndex] || videos[selectedVideoIndex] || videos[0] || null;
 
   const updateCaptionForVideo = async (video: VideoData) => {
     setCaptionText(video.title);
     try {
-      const aiRes = await fetch('/api/generate-caption', {
+      const response = await fetch('/api/generate-caption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: video.title,
-          author: video.channel !== 'curator_network' ? video.channel : '',
-          niche: activeNiche
-        })
+          author: video.channel !== 'aviationcura' ? video.channel : '',
+          niche: activeNiche,
+        }),
       });
-      if (aiRes.ok) {
-        const aiData = await aiRes.json() as any;
-        if (aiData.success && aiData.caption) {
-          setCaptionText(aiData.caption);
-        }
-      }
-    } catch (e) {
-      console.warn("AI caption auto-fetch failed:", e);
+      if (!response.ok) return;
+      const data = await response.json() as { success?: boolean; caption?: string };
+      if (data.success && data.caption) setCaptionText(data.caption);
+    } catch (error) {
+      console.warn('Caption assistant unavailable:', error);
     }
   };
 
   const handleSelectVideo = async (video: VideoData, customList?: VideoData[]) => {
-    const listToUse = customList || activePlaylist.length > 0 ? (customList || activePlaylist) : videos;
-    const foundIdx = listToUse.findIndex(v => v.id === video.id);
-    
+    const list = customList || (activePlaylist.length ? activePlaylist : videos);
+    const index = list.findIndex((item) => item.id === video.id);
+
     if (customList) {
       setActivePlaylist(customList);
-      setActivePlaylistIndex(foundIdx >= 0 ? foundIdx : 0);
-    } else if (foundIdx >= 0) {
-      setActivePlaylistIndex(foundIdx);
+      setActivePlaylistIndex(Math.max(index, 0));
+    } else if (index >= 0) {
+      setActivePlaylistIndex(index);
     } else {
-      // Add custom video to front of playlist
-      const updated = [video, ...activePlaylist];
-      setActivePlaylist(updated);
+      setActivePlaylist([video, ...activePlaylist]);
       setActivePlaylistIndex(0);
     }
 
-    setMobileTab('preview');
+    setMobilePanel('preview');
     await updateCaptionForVideo(video);
   };
 
-  const handlePrevVideo = () => {
-    if (activePlaylist.length > 0 && activePlaylistIndex > 0) {
-      const newIdx = activePlaylistIndex - 1;
-      setActivePlaylistIndex(newIdx);
-      const prevVid = activePlaylist[newIdx];
-      updateCaptionForVideo(prevVid);
-    } else if (selectedVideoIndex > 0) {
-      const newIdx = selectedVideoIndex - 1;
-      setSelectedVideoIndex(newIdx);
-      const prevVid = videos[newIdx];
-      updateCaptionForVideo(prevVid);
-    }
-  };
+  const navigateVideo = (direction: -1 | 1) => {
+    const list = activePlaylist.length ? activePlaylist : videos;
+    const currentIndex = activePlaylist.length ? activePlaylistIndex : selectedVideoIndex;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= list.length) return;
 
-  const handleNextVideo = () => {
-    if (activePlaylist.length > 0 && activePlaylistIndex < activePlaylist.length - 1) {
-      const newIdx = activePlaylistIndex + 1;
-      setActivePlaylistIndex(newIdx);
-      const nextVid = activePlaylist[newIdx];
-      updateCaptionForVideo(nextVid);
-    } else if (selectedVideoIndex < videos.length - 1) {
-      const newIdx = selectedVideoIndex + 1;
-      setSelectedVideoIndex(newIdx);
-      const nextVid = videos[newIdx];
-      updateCaptionForVideo(nextVid);
-    }
+    if (activePlaylist.length) setActivePlaylistIndex(nextIndex);
+    else setSelectedVideoIndex(nextIndex);
+    void updateCaptionForVideo(list[nextIndex]);
   };
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-black flex flex-col items-center justify-center space-y-3">
-        <div className="w-6 h-6 border-2 border-white border-t-transparent animate-spin rounded-full"></div>
-        <p className="text-xs font-mono text-neutral-500">INITIALIZING STUDIO</p>
+      <div className="loading-screen">
+        <div className="loading-mark"><Sparkles size={22} /></div>
+        <p>Preparing your flight deck</p>
       </div>
     );
   }
 
+  const playlistLength = activePlaylist.length || videos.length;
+  const playlistIndex = activePlaylist.length ? activePlaylistIndex : selectedVideoIndex;
+
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col antialiased font-sans">
-      {/* Top Bar */}
+    <div className="studio-app">
       <Header
         onTriggerRun={handleTriggerRun}
         isTriggering={isTriggering}
@@ -231,132 +210,78 @@ export function App() {
         activeNiche={activeNiche}
       />
 
-      {/* Mobile Tab Navigation */}
-      <div className="lg:hidden flex items-center justify-around bg-[#0a0a0a] border-b border-[#222222] px-2 py-2">
-        <button
-          onClick={() => setMobileTab('preview')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
-            mobileTab === 'preview' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
-          }`}
-        >
-          <Smartphone size={13} />
-          <span>Preview</span>
+      <nav className="mobile-studio-nav" aria-label="Studio panels">
+        <button className={mobilePanel === 'library' ? 'is-active' : ''} onClick={() => setMobilePanel('library')}>
+          <PanelLeft size={16} /> Library
         </button>
-        <button
-          onClick={() => setMobileTab('controls')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
-            mobileTab === 'controls' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
-          }`}
-        >
-          <Sliders size={13} />
-          <span>Controls</span>
+        <button className={mobilePanel === 'preview' ? 'is-active' : ''} onClick={() => setMobilePanel('preview')}>
+          <Eye size={16} /> Preview
         </button>
-        <button
-          onClick={() => setMobileTab('history')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${
-            mobileTab === 'history' ? 'bg-white text-black font-semibold' : 'text-neutral-400'
-          }`}
-        >
-          <Database size={13} />
-          <span>Archive ({videos.length})</span>
+        <button className={mobilePanel === 'release' ? 'is-active' : ''} onClick={() => setMobilePanel('release')}>
+          <SlidersHorizontal size={16} /> Release
         </button>
-      </div>
+      </nav>
 
-      {/* Main Studio Body */}
-      <main className="flex-1 w-full max-w-7xl mx-auto p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Interactive Phone Preview */}
-        <div
-          className={`lg:col-span-5 flex flex-col items-center justify-center ${
-            mobileTab === 'preview' ? 'block' : 'hidden lg:flex'
-          }`}
-        >
-          {/* Phone Mockup Frame */}
-          <div className="relative w-full max-w-[340px] sm:max-w-[360px] aspect-[9/16] max-h-[82vh] bg-black rounded-[32px] p-2 border border-[#27272a] shadow-2xl flex flex-col overflow-hidden">
-            {/* Phone Top Notch Bar */}
-            <div className="absolute top-3.5 left-1/2 -translate-x-1/2 w-20 h-3.5 bg-[#121212] rounded-full z-40 flex items-center justify-end pr-2">
-              <div className="w-2 h-2 rounded-full bg-[#202020]"></div>
+      <main className="studio-grid">
+        <aside className={`studio-panel library-panel ${mobilePanel === 'library' ? 'mobile-visible' : ''}`}>
+          <VideoHistoryDrawer
+            videos={videos}
+            selectedVideoId={currentVideo?.id || null}
+            onSelectVideo={handleSelectVideo}
+            onRefresh={fetchVideos}
+            isRefreshing={isRefreshing}
+          />
+        </aside>
+
+        <section className={`preview-workspace ${mobilePanel === 'preview' ? 'mobile-visible' : ''}`}>
+          <div className="workspace-heading">
+            <div>
+              <span className="eyebrow"><Clapperboard size={14} /> Release preview</span>
+              <h2>Ready for review</h2>
+              <p>Inspect the final vertical composition before distribution.</p>
             </div>
-
-            {/* Internal Screen Area */}
-            <div className="relative flex-1 w-full h-full rounded-[24px] overflow-hidden bg-[#050505]">
-              {currentVideo ? (
-                <VideoPlayer video={currentVideo} isActive={true} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs text-neutral-500 font-mono">
-                  NO VIDEO SELECTED
-                </div>
-              )}
+            <div className="preview-meta">
+              <span>9:16</span>
+              <span className="status-dot">Original export</span>
             </div>
           </div>
 
-          {/* Video Switcher Controls */}
-          <div className="mt-3.5 flex items-center space-x-2.5 text-xs font-mono">
-            <button
-              onClick={handlePrevVideo}
-              disabled={selectedVideoIndex === 0}
-              className="px-3 py-1.5 rounded bg-[#111111] border border-[#222222] hover:bg-[#1a1a1a] hover:border-[#333333] disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
-            >
-              <ChevronLeft size={13} />
-              <span>PREV</span>
-            </button>
-            <span className="text-neutral-500 px-2">
-              {selectedVideoIndex + 1} / {videos.length}
-            </span>
-            <button
-              onClick={handleNextVideo}
-              disabled={selectedVideoIndex === videos.length - 1}
-              className="px-3 py-1.5 rounded bg-[#111111] border border-[#222222] hover:bg-[#1a1a1a] hover:border-[#333333] disabled:opacity-30 text-neutral-300 flex items-center gap-1 cursor-pointer"
-            >
-              <span>NEXT</span>
-              <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column: Command Center & Archive */}
-        <div
-          className={`lg:col-span-7 flex flex-col space-y-5 ${
-            mobileTab === 'controls' || mobileTab === 'history' ? 'block' : 'hidden lg:flex'
-          }`}
-        >
-          {mobileTab === 'history' ? (
-            <div className="flat-panel rounded-2xl overflow-hidden">
-              <VideoHistoryDrawer
-                videos={videos}
-                selectedVideoId={currentVideo?.id || null}
-                onSelectVideo={handleSelectVideo}
-                onRefresh={fetchVideos}
-                isRefreshing={isRefreshing}
-              />
+          <div className="preview-stage">
+            <div className="stage-orbit stage-orbit-one" />
+            <div className="stage-orbit stage-orbit-two" />
+            <div className="phone-frame" aria-label="Vertical video preview">
+              <div className="phone-speaker" />
+              <div className="phone-screen">
+                {currentVideo ? <VideoPlayer video={currentVideo} isActive /> : <div className="empty-preview">Select an asset to begin.</div>}
+              </div>
             </div>
-          ) : (
-            <>
-              {/* Command Center */}
-              <div className="flat-panel rounded-2xl overflow-hidden">
-                <CommandCenter
-                  currentVideo={currentVideo}
-                  activeNiche={activeNiche}
-                  onSelectNiche={setActiveNiche}
-                  isTriggering={isTriggering}
-                  captionText={captionText}
-                  onChangeCaption={setCaptionText}
-                  onVideoGenerated={fetchVideos}
-                />
-              </div>
+          </div>
 
-              {/* Archive Section */}
-              <div className="hidden lg:block flat-panel rounded-2xl overflow-hidden">
-                <VideoHistoryDrawer
-                  videos={videos}
-                  selectedVideoId={currentVideo?.id || null}
-                  onSelectVideo={handleSelectVideo}
-                  onRefresh={fetchVideos}
-                  isRefreshing={isRefreshing}
-                />
-              </div>
-            </>
-          )}
-        </div>
+          <div className="preview-footer">
+            <div className="pager-control" aria-label="Asset navigation">
+              <button onClick={() => navigateVideo(-1)} disabled={playlistIndex === 0} aria-label="Previous asset"><ChevronLeft size={17} /></button>
+              <span><strong>{String(playlistIndex + 1).padStart(2, '0')}</strong> / {String(playlistLength).padStart(2, '0')}</span>
+              <button onClick={() => navigateVideo(1)} disabled={playlistIndex >= playlistLength - 1} aria-label="Next asset"><ChevronRight size={17} /></button>
+            </div>
+            <div className="preview-health">
+              <Clock3 size={15} />
+              <span>Render status</span>
+              <strong>{isTriggering ? 'Pipeline running' : 'Ready to publish'}</strong>
+            </div>
+          </div>
+        </section>
+
+        <aside className={`studio-panel controls-panel ${mobilePanel === 'release' ? 'mobile-visible' : ''}`}>
+          <CommandCenter
+            currentVideo={currentVideo}
+            activeNiche={activeNiche}
+            onSelectNiche={setActiveNiche}
+            isTriggering={isTriggering}
+            captionText={captionText}
+            onChangeCaption={setCaptionText}
+            onVideoGenerated={fetchVideos}
+          />
+        </aside>
       </main>
     </div>
   );

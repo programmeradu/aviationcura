@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Video, ShieldCheck, Activity, Terminal } from 'lucide-react';
+import { ChevronDown, CircleHelp, Cloud, Plane, Plus, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   onTriggerRun: () => void;
@@ -12,59 +12,40 @@ export const Header: React.FC<HeaderProps> = ({
   onTriggerRun,
   isTriggering,
   totalCurated,
-  activeNiche
+  activeNiche,
 }) => {
+  const readableNiche = activeNiche.replace(/_/g, ' ');
+
   return (
-    <header className="w-full bg-[#0a0a0a] border-b border-[#222222] px-4 lg:px-8 py-3 flex items-center justify-between sticky top-0 z-40">
-      {/* Brand & Status */}
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-white text-black font-bold">
-          <Terminal size={16} />
-        </div>
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <h1 className="text-sm font-semibold tracking-tight text-white uppercase">Curator Studio</h1>
-            <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#161616] border border-[#27272a] text-[10px] font-mono text-neutral-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-              <span>LIVE PIPELINE</span>
-            </div>
-          </div>
-        </div>
+    <header className="app-header">
+      <div className="brand-lockup">
+        <div className="brand-mark" aria-hidden="true"><Plane size={19} /></div>
+        <div className="brand-name">Aviation<span>Cura</span></div>
+        <div className="header-divider" />
+        <button className="project-switcher" type="button" aria-label="Current workspace">
+          <span>Flight Deck</span><ChevronDown size={14} />
+        </button>
       </div>
 
-      {/* Metrics & Actions */}
-      <div className="flex items-center space-x-3">
-        {/* Niche Badge */}
-        <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-md bg-[#121212] border border-[#222222] text-xs">
-          <Activity size={13} className="text-neutral-400" />
-          <span className="text-neutral-500">Niche:</span>
-          <span className="font-medium text-neutral-200 capitalize">{activeNiche.replace('_', ' ')}</span>
+      <div className="header-center">
+        <div className="system-status">
+          <span className="signal-dot" />
+          <span>All systems nominal</span>
         </div>
+        <span className="header-context">{totalCurated} exports</span>
+      </div>
 
-        {/* Total Curated Badge */}
-        <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-md bg-[#121212] border border-[#222222] text-xs font-mono">
-          <Video size={13} className="text-neutral-400" />
-          <span className="text-neutral-300">{totalCurated} videos</span>
-        </div>
-
-        {/* Anti-Strike Badge */}
-        <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-[#121212] border border-[#222222] text-[11px] text-neutral-300 font-mono">
-          <ShieldCheck size={13} className="text-neutral-400" />
-          <span>OBFUSCATED</span>
-        </div>
-
-        {/* Trigger Button */}
+      <div className="header-actions">
+        <div className="niche-context"><Cloud size={15} /><span>{readableNiche}</span></div>
+        <button type="button" className="icon-header-button" aria-label="Help"><CircleHelp size={18} /></button>
         <button
+          type="button"
           onClick={onTriggerRun}
           disabled={isTriggering}
-          className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-md font-semibold text-xs transition cursor-pointer ${
-            isTriggering
-              ? 'bg-[#1a1a1a] text-neutral-500 border border-[#2a2a2a] cursor-not-allowed'
-              : 'flat-button-primary'
-          }`}
+          className="new-run-button"
         >
-          <RefreshCw size={13} className={isTriggering ? 'animate-spin' : ''} />
-          <span>{isTriggering ? 'Running...' : 'Trigger Run'}</span>
+          {isTriggering ? <Sparkles size={16} className="spin-icon" /> : <Plus size={17} />}
+          <span>{isTriggering ? 'Building library' : 'New curation run'}</span>
         </button>
       </div>
     </header>

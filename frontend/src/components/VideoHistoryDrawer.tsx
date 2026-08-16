@@ -1,5 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Film, RefreshCw, Zap, Flame, CheckCircle2, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Archive,
+  Check,
+  CirclePlay,
+  Flame,
+  LibraryBig,
+  LoaderCircle,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import type { VideoData } from './VideoPlayer';
 
 interface QueuedItem {
@@ -23,286 +33,144 @@ interface VideoHistoryDrawerProps {
   isRefreshing?: boolean;
 }
 
+const SEARCH_PRESETS = [
+  { label: 'Flight deck', value: 'cockpit takeoff landing atc aviation' },
+  { label: 'Engineering', value: 'aircraft engineering turbine aviation maintenance' },
+  { label: 'History', value: 'aviation history vintage aircraft flight archive' },
+  { label: 'Rare moments', value: 'aviation rare crosswind emergency aircraft carrier' },
+];
+
+const compact = (value: number) => {
+  if (!value) return '—';
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return String(value);
+};
+
 export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
   videos,
   selectedVideoId,
   onSelectVideo,
   onRefresh,
-  isRefreshing = false
+  isRefreshing = false,
 }) => {
-  const [tab, setTab] = useState<'archive' | 'queue'>('archive');
+  const [tab, setTab] = useState<'library' | 'inbox'>('library');
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   const [isMining, setIsMining] = useState(false);
   const [batchCount, setBatchCount] = useState(20);
-  const [mineQuery, setMineQuery] = useState('aviation');
+  const [query, setQuery] = useState(SEARCH_PRESETS[0].value);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const fetchQueue = async () => {
     try {
-      const res = await fetch(`/api/queue?t=${Date.now()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setQueue(data);
-      }
-    } catch (e) {
-      console.warn("Queue fetch error:", e);
+      const response = await fetch(`/api/queue?t=${Date.now()}`);
+      if (response.ok) setQueue(await response.json());
+    } catch (error) {
+      console.warn('Content inbox is unavailable:', error);
     }
   };
 
-  useEffect(() => {
-    fetchQueue();
-  }, []);
+  useEffect(() => { fetchQueue(); }, []);
 
-  const handleBatchMine = async () => {
+  const handleMine = async () => {
     setIsMining(true);
+    setNotice(null);
     try {
-      const res = await fetch('/api/batch-mine-tiktok', {
+      const response = await fetch('/api/batch-mine-tiktok', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: mineQuery, count: batchCount, niche: mineQuery })
+        body: JSON.stringify({ query, count: batchCount, niche: 'aviation' }),
       });
-      const data = await res.json();
-      if (data.success) {
-        await fetchQueue();
-        alert(`Successfully mined ${data.insertedCount || data.countRetrieved} viral videos into D1 Queue!`);
-      } else {
-        alert(`Mining notice: ${data.error || 'Failed to fetch'}`);
-      }
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      const data = await response.json() as { success?: boolean; insertedCount?: number; countRetrieved?: number; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error || 'No source assets were returned');
+      await fetchQueue();
+      setNotice(`${data.insertedCount || data.countRetrieved || 0} source assets added to the inbox.`);
+    } catch (error: any) {
+      setNotice(error.message || 'Could not update the source inbox.');
     } finally {
       setIsMining(false);
+      window.setTimeout(() => setNotice(null), 4500);
     }
   };
 
-  const unusedCount = queue.filter(q => q.used === 0).length;
+  const chooseQueueItem = (item: QueuedItem) => {
+    if (!item.play_url) return;
+    const playlist: VideoData[] = queue.filter((entry) => entry.play_url).map((entry) => ({
+      id: entry.id,
+      url: `/api/stream-proxy?url=${encodeURIComponent(entry.play_url)}`,
+      title: entry.title || 'Untitled source asset',
+      channel: entry.author || 'creator',
+      likes: compact(entry.likes),
+      comments: '—',
+      shares: '—',
+    }));
+    onSelectVideo({
+      id: item.id,
+      url: `/api/stream-proxy?url=${encodeURIComponent(item.play_url)}`,
+      title: item.title || 'Untitled source asset',
+      channel: item.author || 'creator',
+      likes: compact(item.likes),
+      comments: '—',
+      shares: '—',
+    }, playlist);
+  };
+
+  const freshCount = queue.filter((item) => item.used === 0).length;
 
   return (
-    <div className="h-full flex flex-col p-4 lg:p-6 text-neutral-200">
-      {/* Header Tabs */}
-      <div className="flex items-center justify-between mb-3 border-b border-[#222222] pb-2">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setTab('archive')}
-            className={`text-xs font-semibold px-2 py-1 rounded transition font-mono ${
-              tab === 'archive'
-                ? 'bg-[#222222] text-white'
-                : 'text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            Archive ({videos.length})
-          </button>
-          <button
-            onClick={() => { setTab('queue'); fetchQueue(); }}
-            className={`text-xs font-semibold px-2 py-1 rounded transition font-mono flex items-center space-x-1 ${
-              tab === 'queue'
-                ? 'bg-amber-950/40 text-amber-300 border border-amber-800/50'
-                : 'text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Flame size={12} className="text-amber-400" />
-            <span>Mined Queue ({unusedCount})</span>
-          </button>
+    <div className="content-library">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow"><LibraryBig size={14} /> Assets</span>
+          <h2>Content library</h2>
         </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => { onRefresh?.(); fetchQueue(); }}
-            disabled={isRefreshing}
-            className="p-1 rounded bg-[#161616] hover:bg-[#222222] border border-[#27272a] text-neutral-400 hover:text-white transition cursor-pointer"
-            title="Sync / Refresh"
-          >
-            <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-          </button>
-        </div>
+        <button className="refresh-library" type="button" onClick={() => { onRefresh?.(); fetchQueue(); }} disabled={isRefreshing} aria-label="Refresh library">
+          <RefreshCw size={15} className={isRefreshing ? 'spin-icon' : ''} />
+        </button>
       </div>
 
-      {tab === 'archive' ? (
-        /* Stored Archive View */
-        videos.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center flat-card rounded-xl">
-            <Film size={24} className="text-neutral-600 mb-2" />
-            <p className="text-xs text-neutral-400 font-mono">Archive Empty</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 flex-1">
-            {videos.map((video, idx) => {
-              const isSelected = selectedVideoId === video.id;
-              return (
-                <div
-                  key={video.id}
-                  onClick={() => onSelectVideo(video)}
-                  className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start space-x-3 group ${
-                    isSelected
-                      ? 'bg-[#181818] border-white text-white'
-                      : 'bg-[#0d0d0d] border-[#222222] hover:bg-[#141414] hover:border-[#333333]'
-                  }`}
-                >
-                  <div className="relative w-12 h-14 rounded bg-[#050505] flex-shrink-0 overflow-hidden border border-[#222222] flex items-center justify-center">
-                    <Film size={15} className="text-neutral-500 group-hover:text-white transition" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                      <Play size={13} className="fill-white text-white" />
-                    </div>
-                  </div>
+      <div className="library-tabs" role="tablist" aria-label="Asset collections">
+        <button className={tab === 'library' ? 'active' : ''} onClick={() => setTab('library')} role="tab" aria-selected={tab === 'library'}><Archive size={14} /> Exports <span>{videos.length}</span></button>
+        <button className={tab === 'inbox' ? 'active' : ''} onClick={() => { setTab('inbox'); fetchQueue(); }} role="tab" aria-selected={tab === 'inbox'}><Flame size={14} /> Source inbox <span>{freshCount}</span></button>
+      </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-mono text-neutral-500">#{idx + 1}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#181818] border border-[#27272a] text-neutral-300 font-mono">
-                        R2 CACHED
-                      </span>
-                    </div>
-
-                    <p className="text-xs font-normal text-neutral-200 line-clamp-2 leading-tight group-hover:text-white transition font-sans">
-                      {video.title}
-                    </p>
-
-                    <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-500 font-mono">
-                      <span className="truncate max-w-[120px]">@{video.channel}</span>
-                      <span>{video.likes} likes</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
+      {tab === 'library' ? (
+        <div className="asset-scroll">
+          <div className="library-intro"><span><Sparkles size={14} /> Finalised videos</span><p>Rendered, original releases ready for review or distribution.</p></div>
+          {videos.length ? videos.map((video, index) => (
+            <button
+              type="button"
+              key={video.id}
+              onClick={() => onSelectVideo(video)}
+              className={selectedVideoId === video.id ? 'asset-row selected' : 'asset-row'}
+            >
+              <span className="asset-index">{String(index + 1).padStart(2, '0')}</span>
+              <span className="asset-poster"><CirclePlay size={18} /></span>
+              <span className="asset-copy"><strong>{video.title}</strong><small>@{video.channel}</small></span>
+              {selectedVideoId === video.id ? <span className="asset-check"><Check size={14} /></span> : <span className="asset-type">MP4</span>}
+            </button>
+          )) : <div className="empty-library"><Archive size={22} /><strong>Nothing in the library yet</strong><span>Your first exported release will appear here.</span></div>}
+        </div>
       ) : (
-        /* Mined TikTok Queue View */
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Custom Batch Mining Control Box */}
-          <div className="p-3 mb-3 bg-[#111111] border border-[#27272a] rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono text-neutral-400 flex items-center space-x-1">
-                <Zap size={12} className="text-amber-400" />
-                <span>Pull TikTok Batch (1 API call)</span>
-              </span>
-              <span className="text-[10px] text-neutral-500 font-mono">Quota-Guard Active</span>
+        <div className="inbox-flow">
+          <div className="source-search">
+            <div className="field-heading"><label htmlFor="source-query">Source intake</label><span>Batch discovery</span></div>
+            <div className="source-preset-row">
+              {SEARCH_PRESETS.map((preset) => <button key={preset.label} onClick={() => setQuery(preset.value)} className={query === preset.value ? 'active' : ''} type="button">{preset.label}</button>)}
             </div>
-
-            {/* Quick Niche Selector Pills */}
-            <div className="flex flex-wrap gap-1.5 mb-2.5">
-              {[
-                { id: 'aviation', name: '✈️ Aviation', query: 'cockpit crosswind landing aircraft carrier atc emergency' },
-                { id: 'deep_sea_extreme', name: '🌊 Deep Sea Extreme', query: 'deep sea saturation diver north sea oil rig rogue wave' },
-                { id: 'micro_restoration', name: '🔬 Micro-Restoration', query: 'rusty tool laser cleaning antique watchmaker restoration' },
-                { id: 'cyprus_tourism', name: '🏛️ Cyprus Tourism', query: 'cyprus travel ayia napa beaches 4k' },
-                { id: 'cyprus_lifestyle', name: '🏝️ Cyprus Lifestyle', query: 'cyprus luxury villas beaches' },
-                { id: 'tech_gadgets', name: '⚡ Tech Gadgets', query: 'cool amazon finds tech gadgets' },
-                { id: 'oddly_satisfying', name: '🧼 ASMR Satisfying', query: 'oddly satisfying asmr factory machines' },
-                { id: 'dark_psychology', name: '🧠 Psychology', query: 'psychological facts dark psychology' },
-                { id: 'luxury_lifestyle', name: '💎 Luxury Lifestyle', query: 'dubai supercars billionaire penthouses' }
-              ].map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => setMineQuery(n.query)}
-                  className={`px-2 py-1 text-[10px] font-mono rounded border transition cursor-pointer ${
-                    mineQuery === n.query
-                      ? 'bg-amber-400 text-black font-bold border-amber-300'
-                      : 'bg-[#181818] text-neutral-300 border-[#27272a] hover:border-neutral-400'
-                  }`}
-                >
-                  {n.name}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={mineQuery}
-                onChange={(e) => setMineQuery(e.target.value)}
-                placeholder="search keyword..."
-                className="flex-1 px-2 py-1 text-xs bg-[#090909] border border-[#27272a] rounded text-white font-mono focus:outline-none focus:border-neutral-400"
-              />
-              <select
-                value={batchCount}
-                onChange={(e) => setBatchCount(Number(e.target.value))}
-                className="px-2 py-1 text-xs bg-[#090909] border border-[#27272a] rounded text-white font-mono"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={30}>30</option>
-              </select>
-              <button
-                onClick={handleBatchMine}
-                disabled={isMining}
-                className="px-3 py-1 bg-white text-black hover:bg-neutral-200 font-mono text-xs font-semibold rounded flex items-center space-x-1 disabled:opacity-50 transition cursor-pointer"
-              >
-                {isMining ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
-                <span>{isMining ? 'Pulling...' : 'Pull'}</span>
-              </button>
-            </div>
+            <div className="search-input-wrap"><Search size={15} /><input id="source-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Describe the source footage you need" /></div>
+            <div className="intake-actions"><select value={batchCount} onChange={(event) => setBatchCount(Number(event.target.value))} aria-label="Source count"><option value={10}>10 assets</option><option value={20}>20 assets</option><option value={30}>30 assets</option></select><button type="button" onClick={handleMine} disabled={isMining || !query.trim()}>{isMining ? <LoaderCircle size={15} className="spin-icon" /> : <Sparkles size={15} />} {isMining ? 'Sourcing' : 'Source assets'}</button></div>
           </div>
 
-          {/* Queue Items List */}
-          <div className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 flex-1">
-            {queue.map((item, idx) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  if (item.play_url) {
-                    const mappedQueue: VideoData[] = queue.filter(q => q.play_url).map(q => ({
-                      id: q.id,
-                      url: `/api/stream-proxy?url=${encodeURIComponent(q.play_url)}`,
-                      title: q.title,
-                      channel: q.author || 'tiktok_creator',
-                      likes: (q.likes > 1000 ? (q.likes / 1000).toFixed(1) + 'K' : q.likes.toString()),
-                      comments: 0,
-                      shares: 0
-                    }));
-
-                    const selected = {
-                      id: item.id,
-                      url: `/api/stream-proxy?url=${encodeURIComponent(item.play_url)}`,
-                      title: item.title,
-                      channel: item.author || 'tiktok_creator',
-                      likes: (item.likes > 1000 ? (item.likes / 1000).toFixed(1) + 'K' : item.likes.toString()),
-                      comments: 0,
-                      shares: 0
-                    };
-
-                    onSelectVideo(selected, mappedQueue);
-                  }
-                }}
-                className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start space-x-3 group ${
-                  item.used === 1
-                    ? 'bg-[#080808] border-[#181818] opacity-60'
-                    : 'bg-[#0d0d0d] border-[#222222] hover:bg-[#141414] hover:border-amber-700/50'
-                }`}
-              >
-                <div className="relative w-12 h-14 rounded bg-[#050505] flex-shrink-0 overflow-hidden border border-[#222222] flex items-center justify-center">
-                  <Flame size={15} className={item.used === 1 ? "text-neutral-600" : "text-amber-400 group-hover:scale-110 transition"} />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                    <Play size={13} className="fill-white text-white" />
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-neutral-500">#{idx + 1}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono flex items-center space-x-1 ${
-                      item.used === 1
-                        ? 'bg-[#181818] border border-[#27272a] text-neutral-500'
-                        : 'bg-amber-950/40 border border-amber-800/40 text-amber-300'
-                    }`}>
-                      {item.used === 1 ? <CheckCircle2 size={9} /> : <Clock size={9} />}
-                      <span>{item.used === 1 ? 'PUBLISHED' : 'QUEUED'}</span>
-                    </span>
-                  </div>
-
-                  <p className="text-xs font-normal text-neutral-200 line-clamp-2 leading-tight group-hover:text-white transition font-sans">
-                    {item.title || '(No Caption)'}
-                  </p>
-
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-500 font-mono">
-                    <span className="truncate max-w-[120px]">@{item.author || 'creator'}</span>
-                    <span className="text-amber-400 font-semibold">
-                      {item.views > 1000000 ? (item.views / 1000000).toFixed(1) + 'M' : (item.views / 1000).toFixed(0) + 'K'} views
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          {notice && <div className="inbox-notice">{notice}</div>}
+          <div className="inbox-scroll">
+            {queue.length ? queue.map((item, index) => (
+              <button type="button" key={item.id} onClick={() => chooseQueueItem(item)} className={item.used ? 'inbox-row used' : 'inbox-row'}>
+                <span className="inbox-poster"><Flame size={16} /></span>
+                <span className="inbox-copy"><strong>{item.title || 'Untitled source asset'}</strong><small>@{item.author || 'creator'} · {compact(item.views)} views</small></span>
+                <span className={item.used ? 'inbox-status used' : 'inbox-status'}>{item.used ? 'Released' : `#${String(index + 1).padStart(2, '0')}`}</span>
+              </button>
+            )) : <div className="empty-library"><Flame size={22} /><strong>Your source inbox is clear</strong><span>Search for the next batch of aviation material above.</span></div>}
           </div>
         </div>
       )}
