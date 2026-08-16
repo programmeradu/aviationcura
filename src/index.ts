@@ -568,7 +568,21 @@ export default {
 			}
 		}
 
-		if (url.pathname === '/api/videos') {
+			if (url.pathname.startsWith('/api/tts/')) {
+				const audioKey = decodeURIComponent(url.pathname.slice('/api/tts/'.length));
+				if (!audioKey.startsWith('tts/')) return new Response('Not found', { status: 404 });
+				const audioObject = await env.VIDEOS_BUCKET.get(audioKey);
+				if (!audioObject?.body) return new Response('Not found', { status: 404 });
+				return new Response(audioObject.body, {
+					headers: {
+						'Content-Type': 'audio/mpeg',
+						'Cache-Control': 'private, max-age=300',
+						'Access-Control-Allow-Origin': '*'
+					}
+				});
+			}
+
+			if (url.pathname === '/api/videos') {
 			const { results } = await env.DB.prepare(
 				`SELECT * FROM videos ORDER BY rowid DESC LIMIT 100`
 			).all();
@@ -961,8 +975,10 @@ CRITICAL RULES:
 
 		// POST /api/generate-documentary — 100% Transformative AI Mini-Documentary Generator
 		if (url.pathname === '/api/generate-documentary' && request.method === 'POST') {
+			let nativeAudioKey: string | undefined;
 			try {
 				const body = await request.json().catch(() => ({})) as any;
+
 				const topic = body.topic || 'Helios Airways Flight 522';
 				const voice = body.voice || 'en-US-ChristopherNeural';
 
@@ -993,21 +1009,22 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Synthesize narration through the existing Workers AI binding.
-				// The model returns a managed MP3 URL, allowing the container to focus only
-				// on bounded media assembly rather than making its own unbounded speech call.
-				const ttsResult = await env.AI.run('inworld/tts-1.5-max', {
-					apply_text_normalization: true,
-					output_format: 'mp3',
-					temperature: 1,
+				// Step 2: Synthesize narration through Cloudflare-hosted Deepgram Aura.
+				// Aura uses the existing Workers AI binding credentials and returns a raw
+				// audio stream, avoiding partner-model credential failures.
+				const audioResponse = await (env.AI as any).run('@cf/deepgram/aura-1', {
 					text: script,
-					timestamp_type: 'none',
-					voice_id: 'Dennis'
-				});
-				const nativeAudioUrl = (ttsResult as any)?.audio || (ttsResult as any)?.result?.audio || (ttsResult as any)?.response?.audio;
-				if (!nativeAudioUrl || typeof nativeAudioUrl !== 'string') {
-					throw new Error('Workers AI did not return a playable narration URL');
+					speaker: 'angus',
+					encoding: 'mp3'
+				}, { returnRawResponse: true }) as Response;
+				if (!audioResponse?.body) {
+					throw new Error('Workers AI did not return a narration audio stream');
 				}
+				nativeAudioKey = `tts/${crypto.randomUUID()}.mp3`;
+				await env.VIDEOS_BUCKET.put(nativeAudioKey, audioResponse.body, {
+					httpMetadata: { contentType: 'audio/mpeg' }
+				});
+				const nativeAudioUrl = new URL(`/api/tts/${encodeURIComponent(nativeAudioKey)}`, request.url).toString();
 
 				// Step 3: Use the renderer's fast styled-background path for now. The active
 				// container image still performs remote B-roll download and FFmpeg assembly in
@@ -1047,11 +1064,12 @@ RULES:
 				const objectKey = `${docId}.mp4`;
 				const videoBody = renderRes.body;
 
-				if (videoBody) {
-					await env.VIDEOS_BUCKET.put(objectKey, videoBody, {
-						httpMetadata: { contentType: 'video/mp4' }
-					});
-				}
+					if (videoBody) {
+						await env.VIDEOS_BUCKET.put(objectKey, videoBody, {
+							httpMetadata: { contentType: 'video/mp4' }
+						});
+					}
+					await env.VIDEOS_BUCKET.delete(nativeAudioKey);
 
 				// Generate high-converting caption
 				const caption = `✈️ ${topic}\nWatch the full breakdown 👆 What would you do in this situation?\n#aviation #pilot #history #avgeek #flight`;
@@ -1073,6 +1091,7 @@ RULES:
 				});
 
 			} catch (e: any) {
+				if (typeof nativeAudioKey === 'string') await env.VIDEOS_BUCKET.delete(nativeAudioKey).catch(() => undefined);
 				console.error("[Mini-Doc AI] Exception:", e);
 				return new Response(JSON.stringify({ success: false, error: e.message }), {
 					status: 500,
