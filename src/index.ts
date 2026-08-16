@@ -1065,14 +1065,12 @@ RULES:
 				// Step 4: Stream rendered MP4 to R2
 				const docId = `doc_${Date.now()}`;
 				const objectKey = `${docId}.mp4`;
-				const videoBody = renderRes.body;
-
-					if (videoBody) {
-						await env.VIDEOS_BUCKET.put(objectKey, videoBody, {
-							httpMetadata: { contentType: 'video/mp4' }
-						});
-					}
-					await env.VIDEOS_BUCKET.delete(nativeAudioKey);
+				const videoBytes = await renderRes.arrayBuffer();
+				if (videoBytes.byteLength === 0) throw new Error('Container returned an empty MP4');
+				await env.VIDEOS_BUCKET.put(objectKey, videoBytes, {
+					httpMetadata: { contentType: 'video/mp4' }
+				});
+				await env.VIDEOS_BUCKET.delete(nativeAudioKey);
 
 				// Generate high-converting caption
 				const caption = `✈️ ${topic}\nWatch the full breakdown 👆 What would you do in this situation?\n#aviation #pilot #history #avgeek #flight`;
