@@ -190,9 +190,9 @@ app.post('/render_documentary', async (req, res) => {
             const clipDuration = totalDuration / numClips;
             let filterGraph = '';
 
-            // Scale and crop each B-roll clip into vertical 1080x1920 with high saturation & micro-movement
+            // Scale and crop each B-roll clip into vertical 720x1280 (HD vertical, fast render) with high saturation
             for (let i = 0; i < numClips; i++) {
-                filterGraph += `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
+                filterGraph += `[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=saturation=1.15:contrast=1.08,trim=duration=${clipDuration.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`;
             }
 
             // Concatenate all B-roll clips seamlessly
@@ -213,9 +213,10 @@ app.post('/render_documentary', async (req, res) => {
                 '-t', totalDuration.toFixed(2),
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
-                '-crf', '22',
+                '-tune', 'fastdecode',
+                '-crf', '24',
                 '-c:a', 'aac',
-                '-b:a', '192k',
+                '-b:a', '128k',
                 '-pix_fmt', 'yuv420p',
                 tmpOutput
             );
