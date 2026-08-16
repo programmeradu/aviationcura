@@ -411,16 +411,23 @@ CRITICAL RULES:
 		// Step 9: Post to TikTok via Zernio (or Ayrshare)
 		if (this.env.ZERNIO_API_KEY) {
 			await step.do('post-tiktok-zernio', async () => {
-				const videoUrl = `https://aviation-curator.samueladu1970.workers.dev/api/video/${selectedVideo.videoId}`;
+				const publicWorkerUrl = "https://aviation-curator.samueladu1970.workers.dev";
+				let videoUrl = `${publicWorkerUrl}/api/video/${selectedVideo.videoId}`;
+
+				// If the video came from tiktok queue and not yet in R2, stream via proxy
+				if (selectedVideo.downloadUrl && selectedVideo.source === 'tiktok') {
+					videoUrl = `${publicWorkerUrl}/api/stream-proxy?url=${encodeURIComponent(selectedVideo.downloadUrl)}`;
+				}
+
 				console.log(`Submitting video to Zernio TikTok: ${videoUrl}`);
 
 				// Step 9a: Fetch connected TikTok account ID
-				const accRes = await fetch("https://api.zernio.com/v1/accounts", {
+				const accRes = await fetch("https://zernio.com/api/v1/accounts", {
 					headers: { "Authorization": `Bearer ${this.env.ZERNIO_API_KEY}` }
 				});
 				if (!accRes.ok) throw new Error(`Zernio accounts lookup failed: ${accRes.statusText}`);
 				const accData = await accRes.json() as any;
-				const tiktokAcc = (accData.accounts || []).find((a: any) => a.platform === 'tiktok' && a.enabled);
+				const tiktokAcc = (accData.accounts || []).find((a: any) => a.platform === 'tiktok' && (a.enabled !== false));
 
 				if (!tiktokAcc) {
 					console.warn("No active TikTok account found connected in Zernio profile.");
@@ -429,7 +436,7 @@ CRITICAL RULES:
 
 				const payload = {
 					content: caption,
-					platforms: [{ platform: "tiktok", accountId: tiktokAcc._id }],
+					platforms: [{ platform: "tiktok", accountId: tiktokAcc._id || tiktokAcc.id }],
 					mediaItems: [{ type: "video", url: videoUrl }],
 					publishNow: true
 				};
