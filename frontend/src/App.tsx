@@ -127,16 +127,22 @@ export function App() {
     }
   };
 
-  const [customVideo, setCustomVideo] = useState<VideoData | null>(null);
+  // Unified list of all playable videos (Archive + Mined Queue)
+  const [activePlaylist, setActivePlaylist] = useState<VideoData[]>([]);
+  const [activePlaylistIndex, setActivePlaylistIndex] = useState<number>(0);
 
-  const currentVideo = customVideo || videos[selectedVideoIndex] || videos[0] || null;
+  // Sync activePlaylist with videos initially
+  useEffect(() => {
+    if (videos.length > 0 && activePlaylist.length === 0) {
+      setActivePlaylist(videos);
+      setActivePlaylistIndex(selectedVideoIndex);
+    }
+  }, [videos]);
 
-  const handleSelectVideo = async (video: VideoData) => {
-    setCustomVideo(video);
+  const currentVideo = activePlaylist[activePlaylistIndex] || videos[selectedVideoIndex] || videos[0] || null;
+
+  const updateCaptionForVideo = async (video: VideoData) => {
     setCaptionText(video.title);
-    setMobileTab('preview');
-
-    // Automatically generate clean 3rd-person AI caption if it looks like raw title
     try {
       const aiRes = await fetch('/api/generate-caption', {
         method: 'POST',
@@ -158,21 +164,51 @@ export function App() {
     }
   };
 
+  const handleSelectVideo = async (video: VideoData, customList?: VideoData[]) => {
+    const listToUse = customList || activePlaylist.length > 0 ? (customList || activePlaylist) : videos;
+    const foundIdx = listToUse.findIndex(v => v.id === video.id);
+    
+    if (customList) {
+      setActivePlaylist(customList);
+      setActivePlaylistIndex(foundIdx >= 0 ? foundIdx : 0);
+    } else if (foundIdx >= 0) {
+      setActivePlaylistIndex(foundIdx);
+    } else {
+      // Add custom video to front of playlist
+      const updated = [video, ...activePlaylist];
+      setActivePlaylist(updated);
+      setActivePlaylistIndex(0);
+    }
+
+    setMobileTab('preview');
+    await updateCaptionForVideo(video);
+  };
+
   const handlePrevVideo = () => {
-    setCustomVideo(null);
-    if (selectedVideoIndex > 0) {
+    if (activePlaylist.length > 0 && activePlaylistIndex > 0) {
+      const newIdx = activePlaylistIndex - 1;
+      setActivePlaylistIndex(newIdx);
+      const prevVid = activePlaylist[newIdx];
+      updateCaptionForVideo(prevVid);
+    } else if (selectedVideoIndex > 0) {
       const newIdx = selectedVideoIndex - 1;
       setSelectedVideoIndex(newIdx);
-      setCaptionText(videos[newIdx].title);
+      const prevVid = videos[newIdx];
+      updateCaptionForVideo(prevVid);
     }
   };
 
   const handleNextVideo = () => {
-    setCustomVideo(null);
-    if (selectedVideoIndex < videos.length - 1) {
+    if (activePlaylist.length > 0 && activePlaylistIndex < activePlaylist.length - 1) {
+      const newIdx = activePlaylistIndex + 1;
+      setActivePlaylistIndex(newIdx);
+      const nextVid = activePlaylist[newIdx];
+      updateCaptionForVideo(nextVid);
+    } else if (selectedVideoIndex < videos.length - 1) {
       const newIdx = selectedVideoIndex + 1;
       setSelectedVideoIndex(newIdx);
-      setCaptionText(videos[newIdx].title);
+      const nextVid = videos[newIdx];
+      updateCaptionForVideo(nextVid);
     }
   };
 

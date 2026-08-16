@@ -18,7 +18,7 @@ interface QueuedItem {
 interface VideoHistoryDrawerProps {
   videos: VideoData[];
   selectedVideoId: string | null;
-  onSelectVideo: (video: VideoData) => void;
+  onSelectVideo: (video: VideoData, customList?: VideoData[]) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
 }
@@ -241,7 +241,17 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
                 key={item.id}
                 onClick={() => {
                   if (item.play_url) {
-                    onSelectVideo({
+                    const mappedQueue: VideoData[] = queue.filter(q => q.play_url).map(q => ({
+                      id: q.id,
+                      url: `/api/stream-proxy?url=${encodeURIComponent(q.play_url)}`,
+                      title: q.title,
+                      channel: q.author || 'tiktok_creator',
+                      likes: (q.likes > 1000 ? (q.likes / 1000).toFixed(1) + 'K' : q.likes.toString()),
+                      comments: 0,
+                      shares: 0
+                    }));
+
+                    const selected = {
                       id: item.id,
                       url: `/api/stream-proxy?url=${encodeURIComponent(item.play_url)}`,
                       title: item.title,
@@ -249,7 +259,9 @@ export const VideoHistoryDrawer: React.FC<VideoHistoryDrawerProps> = ({
                       likes: (item.likes > 1000 ? (item.likes / 1000).toFixed(1) + 'K' : item.likes.toString()),
                       comments: 0,
                       shares: 0
-                    });
+                    };
+
+                    onSelectVideo(selected, mappedQueue);
                   }
                 }}
                 className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start space-x-3 group ${
