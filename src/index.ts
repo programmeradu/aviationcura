@@ -576,6 +576,7 @@ export default {
 				return new Response(audioObject.body, {
 					headers: {
 						'Content-Type': 'audio/mpeg',
+						'Content-Length': String(audioObject.size),
 						'Cache-Control': 'private, max-age=300',
 						'Access-Control-Allow-Origin': '*'
 					}
