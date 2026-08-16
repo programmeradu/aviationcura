@@ -981,7 +981,9 @@ CRITICAL RULES:
 				const body = await request.json().catch(() => ({})) as any;
 
 				const topic = body.topic || 'Helios Airways Flight 522';
-				const voice = body.voice || 'en-US-ChristopherNeural';
+				const requestedVoice = typeof body.voice === 'string' ? body.voice : 'athena';
+				const supportedNarrationVoices = new Set(['athena', 'orion', 'hera']);
+				const voice = supportedNarrationVoices.has(requestedVoice) ? requestedVoice : 'athena';
 
 				console.log(`[Mini-Doc AI] Generating script for topic: ${topic}...`);
 
@@ -1010,12 +1012,12 @@ RULES:
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
 
-				// Step 2: Synthesize narration through Cloudflare-hosted Deepgram Aura.
-				// Aura uses the existing Workers AI binding credentials and returns a raw
-				// audio stream, avoiding partner-model credential failures.
-				const audioResponse = await (env.AI as any).run('@cf/deepgram/aura-1', {
+				// Step 2: Synthesize narration through Cloudflare-hosted Deepgram Aura-2.
+				// The newer model and a documentary-oriented speaker provide a more natural
+				// delivery while retaining the same Workers AI binding and raw audio stream.
+				const audioResponse = await (env.AI as any).run('@cf/deepgram/aura-2-en', {
 					text: script,
-					speaker: 'angus',
+					speaker: voice,
 					encoding: 'mp3'
 				}, { returnRawResponse: true }) as Response;
 				if (!audioResponse?.body) {
