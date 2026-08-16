@@ -1021,7 +1021,9 @@ RULES:
 					throw new Error('Workers AI did not return a narration audio stream');
 				}
 				nativeAudioKey = `tts/${crypto.randomUUID()}.mp3`;
-				await env.VIDEOS_BUCKET.put(nativeAudioKey, audioResponse.body, {
+				const audioBytes = await audioResponse.arrayBuffer();
+				if (audioBytes.byteLength < 1000) throw new Error('Workers AI returned an empty narration file');
+				await env.VIDEOS_BUCKET.put(nativeAudioKey, audioBytes, {
 					httpMetadata: { contentType: 'audio/mpeg' }
 				});
 				const nativeAudioUrl = new URL(`/api/tts/${encodeURIComponent(nativeAudioKey)}`, request.url).toString();
