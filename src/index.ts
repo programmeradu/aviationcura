@@ -68,7 +68,7 @@ function footageTokens(value: string): Set<string> {
 async function fetchCommonsAviationFootage(): Promise<ArchiveFootageRow[]> {
 	const apiUrl = 'https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=Category:Videos_of_aviation&gcmtype=file&gcmlimit=50&prop=imageinfo&iiprop=url|mime|size|extmetadata&format=json';
 	try {
-		const response = await fetch(apiUrl, { headers: { 'User-Agent': 'AviationCura/1.0 (documentary-footage-discovery)' } });
+		const response = await fetch(apiUrl, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'AviationCura/1.0 (documentary-footage-discovery)' } });
 		if (!response.ok) return [];
 		const payload = await response.json() as any;
 		return Object.values(payload?.query?.pages || {}).flatMap((page: any) => {
