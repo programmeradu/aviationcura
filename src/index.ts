@@ -21,24 +21,26 @@ export class ObfuscatorContainer extends Container {
     defaultPort = 3000;
 }
 
-function limitScriptToWordBudget(script: string, maximumWords = 105): string {
+function limitScriptToWordBudget(script: string, maximumWords = 135): string {
 	const normalized = script.replace(/\s+/g, ' ').trim();
-	const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [normalized];
+	const sentences = (normalized.match(/[^.!?]+[.!?]+/g) || []).map((sentence) => sentence.trim());
+	if (!sentences.length) return '';
+
+	// Keep the narrative arc intact: never leave a dangling fragment and always
+	// reserve room for the final consequence/lesson sentence.
+	const closing = sentences[sentences.length - 1];
+	const closingWords = closing.split(/\s+/).filter(Boolean);
 	const selected: string[] = [];
 	let usedWords = 0;
-
-	for (const sentence of sentences) {
-		const cleanSentence = sentence.trim();
-		const words = cleanSentence.split(/\s+/).filter(Boolean);
-		if (usedWords > 0 && usedWords + words.length > maximumWords) break;
-		if (usedWords === 0 && words.length > maximumWords) {
-			return words.slice(0, maximumWords).join(' ').replace(/[,:;\-]+$/, '') + '.';
-		}
-		selected.push(cleanSentence);
+	for (const sentence of sentences.slice(0, -1)) {
+		const words = sentence.split(/\s+/).filter(Boolean);
+		if (usedWords + words.length + closingWords.length > maximumWords) break;
+		selected.push(sentence);
 		usedWords += words.length;
 	}
-
-	return selected.join(' ').trim() || normalized.split(/\s+/).slice(0, maximumWords).join(' ');
+	if (selected.length === 0 && closingWords.length <= maximumWords) return closing;
+	if (closingWords.length <= maximumWords - usedWords) selected.push(closing);
+	return selected.join(' ').trim();
 }
 
 type ArchiveFootageRow = {
@@ -1117,11 +1119,11 @@ CRITICAL RULES:
 
 				console.log(`[Mini-Doc AI] Generating script for topic: ${topic}...`);
 
-					// Step 1: Workers AI crafts a retention-first 35-45 second narrative script + B-Roll queries
+					// Step 1: Workers AI crafts a retention-first 45-60 second narrative script + B-Roll queries
 					const topicFactAnchor = /helios\s+airways?\s+flight\s+522|helios\s+522/i.test(topic)
 						? `CANONICAL FACT ANCHOR — HELIOS AIRWAYS FLIGHT 522: On 14 August 2005, Helios Airways Boeing 737-300 flight 522 flew from Larnaca, Cyprus, to Prague via Athens with 121 occupants. The cabin did not pressurize correctly because the pressurization mode selector remained in MAN after maintenance; the crew did not identify the setting, became incapacitated by hypoxia, and the aircraft continued under autopilot until fuel starvation caused engine flameouts and the crash near Grammatiko, Greece. The 737 cabin-altitude warning shared the same aural horn as the takeoff-configuration warning, contributing to the crew's misinterpretation. Do not claim a record altitude, invent dialogue, or imply that investigators were uncertain about these established findings.`
 						: 'No topic-specific fact anchor is available. Use only facts you can support from the topic context; omit uncertain details rather than inventing them.';
-					const systemPrompt = `You are a retention-first aviation documentary writer and a careful aviation historian. Create a factual 35-45 second vertical short about: "${topic}".
+					const systemPrompt = `You are a retention-first aviation documentary writer and a careful aviation historian. Create a factual 45-60 second vertical short about: "${topic}".
 
 ${topicFactAnchor}
 
@@ -1138,7 +1140,8 @@ FACTUALITY AND STYLE:
 - Use only historically supportable facts. Do not invent dialogue, thoughts, quotes, numbers, technical failures, or dramatic details.
 - If a detail is uncertain, omit it or use careful language such as "investigators later found" only when justified.
 - Sound like a confident human narrator: concrete verbs, short sentences, natural transitions, and controlled tension. Do not use filler phrases such as "the story is not only", "each visual beat", "little did they know", or "what happened next will shock you".
-- Total spoken words must be 90-105 words. Do not count the BROLL line.
+- Write exactly 5 complete spoken sentences: hook/question, context, escalation, reveal, and consequence/lesson. The fifth sentence must resolve the central question and end with a complete takeaway; never end mid-thought.
+- Total spoken words must be 110-135 words. Do not count the BROLL line.
 - Output only the raw spoken narration, followed by one final line beginning exactly with "BROLL: ". Do not include labels, stage directions, speaker names, bracketed notes, or explanations.
 - The BROLL line must contain exactly 3 specific, truthful visual cues that match the narrative beats. Prefer aircraft model, cockpit, cabin, airport, runway, flight path, instrument, map, or archival terms only when accurate. Never request sensational or unrelated footage.`;
 
@@ -1152,7 +1155,7 @@ FACTUALITY AND STYLE:
 				const aiText = ((aiRes as any).response || '').trim();
 				const brollMatch = aiText.match(/BROLL:\s*(.+)$/i);
 				let script = aiText.replace(/BROLL:\s*(.+)$/i, '').trim();
-				// Remove markdown formatting and enforce the short-form runtime budget.
+				// Remove markdown formatting and enforce the 45-60 second runtime budget.
 				script = limitScriptToWordBudget(script.replace(/[*#]/g, '').trim());
 
 				console.log(`[Mini-Doc AI] Script created (${script.split(/\s+/).length} words). Visual cues: ${brollMatch?.[1] || 'cockpit, airplane'}`);
