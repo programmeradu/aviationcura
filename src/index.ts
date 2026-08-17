@@ -41,7 +41,14 @@ function limitScriptToWordBudget(script: string, maximumWords = 105): string {
 	return selected.join(' ').trim() || normalized.split(/\s+/).slice(0, maximumWords).join(' ');
 }
 
-type ArchiveFootageRow = { videoId: string; title: string; keyword_used: string };
+type ArchiveFootageRow = {
+	videoId: string;
+	title: string;
+	keyword_used: string;
+	source?: 'archive' | 'commons' | 'generated';
+	directUrl?: string;
+	license?: string;
+};
 
 // Verified from source preview: this archived B737 marshalling clip was mirrored
 // before upload, causing its embedded signage to read backward.
@@ -56,6 +63,33 @@ const FOOTAGE_STOP_WORDS = new Set([
 function footageTokens(value: string): Set<string> {
 	return new Set((value.toLowerCase().match(/[a-z0-9]+/g) || [])
 		.filter((token) => token.length >= 3 && !FOOTAGE_STOP_WORDS.has(token)));
+}
+
+async function fetchCommonsAviationFootage(): Promise<ArchiveFootageRow[]> {
+	const apiUrl = 'https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=Category:Videos_of_aviation&gcmtype=file&gcmlimit=50&prop=imageinfo&iiprop=url|mime|size|extmetadata&format=json';
+	try {
+		const response = await fetch(apiUrl, { headers: { 'User-Agent': 'AviationCura/1.0 (documentary-footage-discovery)' } });
+		if (!response.ok) return [];
+		const payload = await response.json() as any;
+		return Object.values(payload?.query?.pages || {}).flatMap((page: any) => {
+			const info = page?.imageinfo?.[0];
+				const mime = String(info.mime || '');
+				if (!info?.url || (!mime.startsWith('video/') && mime !== 'application/ogg') || Number(info.size || 0) > 40 * 1024 * 1024) return [];
+			const title = String(page.title || '').replace(/^File:/, '');
+			const license = String(info.extmetadata?.LicenseShortName?.value || 'license-visible');
+			return [{
+				videoId: `commons:${page.pageid}`,
+				title,
+				keyword_used: `aviation commons ${license}`,
+				source: 'commons' as const,
+				directUrl: info.url,
+				license
+			}];
+		});
+	} catch (error) {
+		console.warn('[Mini-Doc AI] Wikimedia Commons discovery unavailable; using local archive:', error);
+		return [];
+	}
 }
 
 function rankContextualFootage(topic: string, visualCues: string, rows: ArchiveFootageRow[]) {
@@ -88,6 +122,8 @@ function rankContextualFootage(topic: string, visualCues: string, rows: ArchiveF
 		if (intent.has('a350') && /(b737|b747|boeing\s*7|a320)/i.test(metadata)) score -= 32;
 		if (misleadingTerms.test(metadata)) score -= 18;
 		if (/cockpit|airport ground|aircraft parking|aircraft marshalling/i.test(metadata) && score > 0) score += 6;
+			if (row.source === 'commons') score += 2;
+			if (row.source === 'generated') score += 3;
 
 		return { ...row, score, matches };
 	}).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
@@ -947,7 +983,29 @@ CRITICAL RULES:
 			}
 		}
 
-		if (url.pathname.startsWith('/api/video/')) {
+			if (url.pathname.startsWith('/api/asset/')) {
+				const assetName = decodeURIComponent(url.pathname.slice('/api/asset/'.length));
+				if (!/^generated_[a-z0-9_]+\\.(mp4|png)$/i.test(assetName)) return new Response('Invalid asset', { status: 400 });
+				const object = await env.VIDEOS_BUCKET.get(`generated/${assetName}`, { range: request.headers, onlyIf: request.headers });
+				if (!object) return new Response('Not found', { status: 404 });
+				if (!('body' in object)) return new Response(null, { status: 304 });
+				const headers = new Headers();
+				object.writeHttpMetadata(headers);
+				headers.set('etag', object.httpEtag);
+				headers.set('Content-Type', assetName.endsWith('.png') ? 'image/png' : 'video/mp4');
+				headers.set('Access-Control-Allow-Origin', '*');
+				headers.set('Accept-Ranges', 'bytes');
+				if (object.range) {
+					const { offset, length } = object.range as any;
+					headers.set('Content-Range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+					headers.set('Content-Length', length.toString());
+					return new Response(object.body, { headers, status: 206 });
+				}
+				headers.set('Content-Length', object.size.toString());
+				return new Response(object.body, { headers, status: 200 });
+			}
+
+			if (url.pathname.startsWith('/api/video/')) {
 			const videoId = url.pathname.split('/').pop();
 			if (!videoId) return new Response('Invalid video ID', { status: 400 });
 			
@@ -1113,16 +1171,41 @@ RULES:
 					   AND keyword_used != 'documentary'
 					 ORDER BY rowid DESC LIMIT 80`
 				).all<ArchiveFootageRow>();
-				const rankedFootage = rankContextualFootage(topic, brollMatch?.[1] || '', archiveRows);
-				const contextualFootage = rankedFootage.filter((row) => row.score >= 15).slice(0, 2);
+				const commonsRows = await fetchCommonsAviationFootage();
+				const generatedRows: ArchiveFootageRow[] = [
+					{ videoId: 'generated_runway_insert', title: 'Original generated runway liftoff insert', keyword_used: 'generated runway takeoff aircraft airport exterior', source: 'generated', directUrl: new URL('/api/asset/generated_runway_insert.mp4', request.url).toString(), license: 'AviationCura original' },
+					{ videoId: 'generated_flightpath_insert', title: 'Original generated flight path insert', keyword_used: 'generated flight path tracking route aircraft map', source: 'generated', directUrl: new URL('/api/asset/generated_flightpath_insert.mp4', request.url).toString(), license: 'AviationCura original' },
+					{ videoId: 'generated_cockpit_insert', title: 'Original generated cockpit detail insert', keyword_used: 'generated cockpit flight deck aircraft controls', source: 'generated', directUrl: new URL('/api/asset/generated_cockpit_insert.mp4', request.url).toString(), license: 'AviationCura original' }
+				];
+				const allFootage = [
+					...archiveRows.map((row) => ({ ...row, source: 'archive' as const })),
+					...commonsRows,
+					...generatedRows
+				];
+				const rankedFootage = rankContextualFootage(topic, brollMatch?.[1] || '', allFootage);
+				// Prefer an exact local aircraft/topic match, then add one clean Commons
+				// operational shot when it is relevant enough. This avoids generic social
+				// clips while still giving the edit a stronger visual rhythm.
+				const selectedIds = new Set<string>();
+				const selectedFootage = [
+					...rankedFootage.filter((row) => row.score >= 20 && row.source === 'archive'),
+					...rankedFootage.filter((row) => row.score >= 10 && row.source === 'commons'),
+					...rankedFootage.filter((row) => row.score >= 8 && row.source === 'generated'),
+					...rankedFootage.filter((row) => row.score >= 15 && row.source === 'archive')
+				].filter((row) => {
+					if (selectedIds.has(row.videoId)) return false;
+					selectedIds.add(row.videoId);
+					return true;
+				}).slice(0, 2);
 				const conservativeFallback = rankedFootage.filter((row) =>
 					/(cockpit|aircraft|airport|runway|takeoff|landing|ground control)/i.test(`${row.title} ${row.keyword_used}`)
 				).slice(0, 1);
-				const selectedFootage = contextualFootage.length > 0 ? contextualFootage : conservativeFallback;
-				console.log(`[Mini-Doc AI] Visual archive selection: ${selectedFootage.map((row) => `${row.videoId} (${row.score})`).join(', ') || 'clean fallback'}`);
-				const brollCandidates = selectedFootage.map((row) => ({
-					url: new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString(),
-					hflip: MIRRORED_ARCHIVE_VIDEO_IDS.has(row.videoId)
+				const finalFootage = selectedFootage.length > 0 ? selectedFootage : conservativeFallback;
+				console.log(`[Mini-Doc AI] Visual archive selection: ${finalFootage.map((row) => `${row.videoId} (${row.score})`).join(', ') || 'clean fallback'}`);
+				const brollCandidates = finalFootage.map((row) => ({
+					url: row.directUrl || new URL(`/api/video/${encodeURIComponent(row.videoId)}`, request.url).toString(),
+					hflip: row.source === 'archive' && MIRRORED_ARCHIVE_VIDEO_IDS.has(row.videoId),
+					license: row.license || 'internal archive'
 				}));
 
 				// Step 4: Call Container to render full 1080x1920 video with native voice & kinetic subtitles

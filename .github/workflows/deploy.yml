@@ -26,6 +26,27 @@ jobs:
           npm install
           npm run build
 
+      - name: Upload original generated visual inserts
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "d2f30e3cd154ffcc867244e40759f256"
+          command: r2 object put aviation-videos/generated/generated_cockpit_insert.mp4 --file assets/generated_cockpit_insert.mp4 --remote
+
+      - name: Upload generated runway insert
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "d2f30e3cd154ffcc867244e40759f256"
+          command: r2 object put aviation-videos/generated/generated_runway_insert.mp4 --file assets/generated_runway_insert.mp4 --remote
+
+      - name: Upload generated flight-path insert
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "d2f30e3cd154ffcc867244e40759f256"
+          command: r2 object put aviation-videos/generated/generated_flightpath_insert.mp4 --file assets/generated_flightpath_insert.mp4 --remote
+
       - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
