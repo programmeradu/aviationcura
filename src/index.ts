@@ -1117,8 +1117,13 @@ CRITICAL RULES:
 
 				console.log(`[Mini-Doc AI] Generating script for topic: ${topic}...`);
 
-				// Step 1: Workers AI crafts a retention-first 35-45 second narrative script + B-Roll queries
+					// Step 1: Workers AI crafts a retention-first 35-45 second narrative script + B-Roll queries
+					const topicFactAnchor = /helios\s+airways?\s+flight\s+522|helios\s+522/i.test(topic)
+						? `CANONICAL FACT ANCHOR — HELIOS AIRWAYS FLIGHT 522: On 14 August 2005, Helios Airways Boeing 737-300 flight 522 flew from Larnaca, Cyprus, to Prague via Athens with 121 occupants. The cabin did not pressurize correctly because the pressurization mode selector remained in MAN after maintenance; the crew did not identify the setting, became incapacitated by hypoxia, and the aircraft continued under autopilot until fuel starvation caused engine flameouts and the crash near Grammatiko, Greece. The 737 cabin-altitude warning shared the same aural horn as the takeoff-configuration warning, contributing to the crew's misinterpretation. Do not claim a record altitude, invent dialogue, or imply that investigators were uncertain about these established findings.`
+						: 'No topic-specific fact anchor is available. Use only facts you can support from the topic context; omit uncertain details rather than inventing them.';
 					const systemPrompt = `You are a retention-first aviation documentary writer and a careful aviation historian. Create a factual 35-45 second vertical short about: "${topic}".
+
+${topicFactAnchor}
 
 Before writing, silently identify the single most surprising verified fact, the question a viewer will want answered, the real stakes, the strongest evidence or turning point, and the final implication. Then write one tight narrative that earns attention rather than summarizing the topic.
 
