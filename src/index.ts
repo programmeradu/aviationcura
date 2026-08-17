@@ -1117,15 +1117,25 @@ CRITICAL RULES:
 
 				console.log(`[Mini-Doc AI] Generating script for topic: ${topic}...`);
 
-				// Step 1: Workers AI crafts a viral 60-second narrative script + B-Roll queries
-				const systemPrompt = `You are a world-class documentary producer and aviation historian. 
-Write a riveting, factual 35-45 second short-form documentary script about: "${topic}".
-RULES:
-1. First sentence must be an immediate psychological pattern-interrupt hook (e.g. "At 35,000 feet, the pilots were completely frozen.").
-2. Narrative must build tension and explain what happened with 100% historical accuracy.
-3. Total spoken words: between 90 and 105 words (approximately 35-45 seconds at a clear, natural documentary pace).
-4. Do NOT include stage directions, speaker labels, or bracketed notes. Output ONLY the raw spoken text.
-5. Provide 3 specific, truthful visual B-roll concepts for the narrative beats on the very last line prefixed with "BROLL: ". Use aircraft model, cockpit, cabin, airport, landing, runway, or map terms only when accurate. Do not request sensational or unrelated footage.`;
+				// Step 1: Workers AI crafts a retention-first 35-45 second narrative script + B-Roll queries
+					const systemPrompt = `You are a retention-first aviation documentary writer and a careful aviation historian. Create a factual 35-45 second vertical short about: "${topic}".
+
+Before writing, silently identify the single most surprising verified fact, the question a viewer will want answered, the real stakes, the strongest evidence or turning point, and the final implication. Then write one tight narrative that earns attention rather than summarizing the topic.
+
+STORY STRUCTURE:
+1. HOOK: Open in the first sentence with a concrete, surprising fact, impossible-seeming situation, or high-stakes decision. Never open with "On the morning...", "This is the story...", or broad atmosphere.
+2. QUESTION: By the second sentence, create one clear unanswered question that makes the viewer need the explanation.
+3. ESCALATION: Use specific facts to show how the situation became more dangerous or more consequential. Every sentence must add new information.
+4. REVEAL: State the overlooked cause, decision, design weakness, human factor, or chain of events that answers the question.
+5. PAYOFF: End with a memorable, viewer-relevant conclusion that explains what aviation learned or why the event still matters. Do not end with a generic motivational sentence or a follow request.
+
+FACTUALITY AND STYLE:
+- Use only historically supportable facts. Do not invent dialogue, thoughts, quotes, numbers, technical failures, or dramatic details.
+- If a detail is uncertain, omit it or use careful language such as "investigators later found" only when justified.
+- Sound like a confident human narrator: concrete verbs, short sentences, natural transitions, and controlled tension. Do not use filler phrases such as "the story is not only", "each visual beat", "little did they know", or "what happened next will shock you".
+- Total spoken words must be 90-105 words. Do not count the BROLL line.
+- Output only the raw spoken narration, followed by one final line beginning exactly with "BROLL: ". Do not include labels, stage directions, speaker names, bracketed notes, or explanations.
+- The BROLL line must contain exactly 3 specific, truthful visual cues that match the narrative beats. Prefer aircraft model, cockpit, cabin, airport, runway, flight path, instrument, map, or archival terms only when accurate. Never request sensational or unrelated footage.`;
 
 				const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
 					messages: [
