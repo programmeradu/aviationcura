@@ -985,7 +985,7 @@ CRITICAL RULES:
 
 			if (url.pathname.startsWith('/api/asset/')) {
 				const assetName = decodeURIComponent(url.pathname.slice('/api/asset/'.length));
-				if (!/^generated_[a-z0-9_]+\\.(mp4|png)$/i.test(assetName)) return new Response('Invalid asset', { status: 400 });
+				if (!/^generated_[a-z0-9_]+\.(mp4|png)$/i.test(assetName)) return new Response('Invalid asset', { status: 400 });
 				const object = await env.VIDEOS_BUCKET.get(`generated/${assetName}`, { range: request.headers, onlyIf: request.headers });
 				if (!object) return new Response('Not found', { status: 404 });
 				if (!('body' in object)) return new Response(null, { status: 304 });
