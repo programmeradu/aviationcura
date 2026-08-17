@@ -1175,38 +1175,29 @@ FACTUALITY AND STYLE:
 				// cues. Earlier releases used a generic recency query, which could select a
 				// visually unrelated clip. Keep only the strongest contextual matches and use
 				// a conservative cockpit/aircraft fallback when the exact incident is absent.
-				const { results: archiveRows } = await env.DB.prepare(
-					`SELECT videoId, title, keyword_used FROM videos
-					 WHERE status = 'published' AND r2_url IS NOT NULL AND r2_url != ''
-					   AND keyword_used != 'documentary'
-					 ORDER BY rowid DESC LIMIT 80`
-				).all<ArchiveFootageRow>();
-				const commonsRows = await fetchCommonsAviationFootage();
+					const commonsRows = await fetchCommonsAviationFootage();
 				const generatedRows: ArchiveFootageRow[] = [
 					{ videoId: 'generated_runway_insert', title: 'Original generated runway liftoff insert', keyword_used: 'generated runway takeoff aircraft airport exterior', source: 'generated', directUrl: new URL('/api/asset/generated_runway_insert.mp4', request.url).toString(), license: 'AviationCura original' },
 					{ videoId: 'generated_flightpath_insert', title: 'Original generated flight path insert', keyword_used: 'generated flight path tracking route aircraft map', source: 'generated', directUrl: new URL('/api/asset/generated_flightpath_insert.mp4', request.url).toString(), license: 'AviationCura original' },
 					{ videoId: 'generated_cockpit_insert', title: 'Original generated cockpit detail insert', keyword_used: 'generated cockpit flight deck aircraft controls', source: 'generated', directUrl: new URL('/api/asset/generated_cockpit_insert.mp4', request.url).toString(), license: 'AviationCura original' }
 				];
-				const allFootage = [
-					...archiveRows.map((row) => ({ ...row, source: 'archive' as const })),
-					...commonsRows,
-					...generatedRows
-				];
-				const rankedFootage = rankContextualFootage(topic, brollMatch?.[1] || '', allFootage);
-				// Prefer an exact local aircraft/topic match, then add one clean Commons
-				// operational shot when it is relevant enough. This avoids generic social
-				// clips while still giving the edit a stronger visual rhythm.
-				const selectedIds = new Set<string>();
-				const selectedFootage = [
-					...rankedFootage.filter((row) => row.score >= 20 && row.source === 'archive'),
-					...rankedFootage.filter((row) => row.score >= 10 && row.source === 'commons'),
-					...rankedFootage.filter((row) => row.score >= 8 && row.source === 'generated'),
-					...rankedFootage.filter((row) => row.score >= 15 && row.source === 'archive')
-				].filter((row) => {
-					if (selectedIds.has(row.videoId)) return false;
-					selectedIds.add(row.videoId);
-					return true;
-				}).slice(0, 2);
+					// C-path policy: only license-visible Commons assets and AviationCura-original
+					// inserts may reach production. The legacy local archive contains social-
+					// branded material without provenance, so it is intentionally excluded.
+					const allFootage = [...commonsRows, ...generatedRows];
+					const rankedFootage = rankContextualFootage(topic, brollMatch?.[1] || '', allFootage);
+					// Lead with original generated visuals for clean hooks and use Commons only
+					// when its license-visible clip is a strong contextual match.
+					const selectedIds = new Set<string>();
+					const selectedFootage = [
+						...rankedFootage.filter((row) => row.score >= 8 && row.source === 'generated'),
+						...rankedFootage.filter((row) => row.score >= 10 && row.source === 'commons'),
+						...rankedFootage.filter((row) => row.source === 'generated')
+					].filter((row) => {
+						if (selectedIds.has(row.videoId)) return false;
+						selectedIds.add(row.videoId);
+						return true;
+					}).slice(0, 2);
 				const conservativeFallback = rankedFootage.filter((row) =>
 					/(cockpit|aircraft|airport|runway|takeoff|landing|ground control)/i.test(`${row.title} ${row.keyword_used}`)
 				).slice(0, 1);
